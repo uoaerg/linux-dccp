@@ -28,6 +28,9 @@ static struct ccid_operations *ccids[] = {
 #ifdef CONFIG_IP_DCCP_CCID0
 	&ccid0_ops,
 #endif
+#ifdef CONFIG_IP_DCCP_CCID5
+	&ccid5_ops,
+#endif
 };
 
 static struct ccid_operations *ccid_by_number(const u8 id)

@@ -185,6 +185,7 @@ enum {
 #define DCCPC_TESTING_MIN	248
 #define DCCPC_TESTING_MAX	255
 	DCCPC_CCID_ZERO = DCCPC_TESTING_MIN,
+	DCCPC_CCID_CUBIC,
 };
 
 /* DCCP features (RFC 4340 section 6.4) */

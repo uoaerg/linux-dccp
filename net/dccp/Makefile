@@ -21,6 +21,8 @@ dccp-$(CONFIG_IP_DCCP_TFRC_SP_LIB) +=	ccids/lib/tfrc_sp.o		\
 					ccids/lib/loss_interval_sp.o	\
 					ccids/lib/tfrc_ccids_sp.o
 
+dccp-$(CONFIG_IP_DCCP_CCID5)	+= ccids/ccid5.o
+
 dccp_ipv4-y := ipv4.o
 
 # build dccp_ipv6 as module whenever either IPv6 or DCCP is a module

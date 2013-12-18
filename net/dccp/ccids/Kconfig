@@ -140,4 +140,26 @@ config IP_DCCP_CCID0
 
 	  Say N.
 
+config IP_DCCP_CCID5
+	bool "CCID-5 (DCCP Cubic) (EXPERIMENTAL)"
+	def_bool y if (IP_DCCP = y || IP_DCCP = m)
+	---help---
+	Enable an new experimental CCID called DCCP Cubic.
+
+	DCCP Cubic (with experimental ID 249) is a CCID which performs the
+	congestion control based on Cubic algorithm. For more details about
+	the algorithm consult
+		http://netsrv.csc.ncsu.edu/export/cubic_a_new_tcp_2008.pdf
+
+config IP_DCCP_CCID5_DEBUG
+	bool "CCID-5 debugging messages"
+	depends on IP_DCCP_CCID5
+	---help---
+	  Enable CCID-5 specific debugging messages.
+
+	  The debugging output can additionally be toggled by setting the
+	  ccid5_debug parameter to 0 or 1.
+
+	  If in doubt, say N.
+
 endmenu

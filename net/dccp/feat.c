@@ -946,6 +946,30 @@ static const struct ccid_dependency *dccp_feat_ccid_deps(u8 ccid, bool is_local)
 			{ 0, 0, 0, 0 }
 		}
 	};
+	static const struct ccid_dependency ccid5_dependencies[2][2] = {
+	/*
+	* CCID-5 is implemented with support ACK Vector as dependency,
+	* following the same structure of CCID-2
+	*/
+		{       /* Dependencies of the receiver-side (remote) CCID5 */
+			{
+				.dependent_feat = DCCPF_SEND_ACK_VECTOR,
+				.is_local       = true,
+				.is_mandatory   = true,
+				.val            = 1
+			},
+			{ 0, 0, 0, 0 }
+		},
+		{       /* Dependencies of the sender-side (local) CCID5 */
+			{
+				.dependent_feat = DCCPF_SEND_ACK_VECTOR,
+				.is_local       = false,
+				.is_mandatory   = true,
+				.val            = 1
+			},
+			{ 0, 0, 0, 0 }
+		}
+	};
 	switch (ccid) {
 	case DCCPC_CCID_ZERO:
 		return ccid0_dependencies[is_local];
@@ -954,6 +978,8 @@ static const struct ccid_dependency *dccp_feat_ccid_deps(u8 ccid, bool is_local)
 	case DCCPC_CCID3:
 	case DCCPC_CCID4: /* fall through (CCID-4 is a variation of CCID-3 */
 		return ccid3_dependencies[is_local];
+	case DCCPC_CCID_CUBIC:
+		return ccid5_dependencies[is_local];
 	default:
 		return NULL;
 	}

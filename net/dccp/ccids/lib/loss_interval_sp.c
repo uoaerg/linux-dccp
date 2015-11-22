@@ -15,6 +15,7 @@
 
 static struct kmem_cache  *tfrc_lh_slab  __read_mostly;
 static struct kmem_cache  *tfrc_ld_slab  __read_mostly;
+static struct kmem_cache  *tfrc_ecn_echo_sum_slab  __read_mostly;
 /* Loss Interval weights from [RFC 3448, 5.4], scaled by 10 */
 static const int tfrc_lh_weights[NINTERVAL] = { 10, 10, 10, 10, 8, 6, 4, 2 };
 
@@ -81,6 +82,48 @@ void tfrc_sp_lh_cleanup(struct tfrc_loss_hist *lh)
 					lh->ring[LIH_INDEX(lh->counter)]);
 			lh->ring[LIH_INDEX(lh->counter)] = NULL;
 		}
+}
+
+/*
+ * tfrc_sp_get_random_ect  -  return random ect codepoint
+ * li_data:		data where to register ect sent
+ * seqn:		packet's sequence number
+ */
+int tfrc_sp_get_random_ect(struct tfrc_tx_li_data *li_data, u64 seqn)
+{
+	int ect;
+	struct tfrc_ecn_echo_sum_entry *sum;
+
+	/* TODO: implement random ect*/
+	ect = INET_ECN_ECT_0;
+
+	sum = kmem_cache_alloc(tfrc_ecn_echo_sum_slab, GFP_ATOMIC);
+
+	sum->previous = li_data->ecn_sums_head;
+	sum->ecn_echo_sum = (sum->previous->ecn_echo_sum) ? !ect : ect;
+	sum->seq_num = seqn;
+
+	li_data->ecn_sums_head = sum;
+
+	return ect;
+}
+
+/*
+ * tfrc_sp_tx_ld_cleanup  -  free all entries
+ * echo_sums_data:		head of the list
+ */
+void tfrc_sp_tx_ld_cleanup(struct tfrc_ecn_echo_sum_entry **echo_sums_data)
+{
+	struct tfrc_ecn_echo_sum_entry *e, *previous;
+	e = *echo_sums_data;
+
+	while (e != NULL) {
+		previous = e->previous;
+		kmem_cache_free(tfrc_ecn_echo_sum_slab, e);
+		e = previous;
+	}
+
+	*echo_sums_data = NULL;
 }
 
 /*
@@ -494,8 +537,13 @@ int __init tfrc_sp_li_init(void)
 	tfrc_ld_slab = kmem_cache_create("tfrc_sp_li_data",
 					 sizeof(struct tfrc_loss_data_entry), 0,
 					 SLAB_HWCACHE_ALIGN, NULL);
+	tfrc_ecn_echo_sum_slab = kmem_cache_create("tfrc_sp_ecn_echo_sum",
+				sizeof(struct tfrc_ecn_echo_sum_entry), 0,
+						SLAB_HWCACHE_ALIGN, NULL);
 
-	if ((tfrc_lh_slab != NULL) && (tfrc_ld_slab != NULL))
+	if ((tfrc_lh_slab != NULL) &&
+	    (tfrc_ld_slab != NULL) &&
+	    (tfrc_ecn_echo_sum_slab != NULL))
 		return 0;
 
 	if (tfrc_lh_slab != NULL) {
@@ -506,6 +554,11 @@ int __init tfrc_sp_li_init(void)
 	if (tfrc_ld_slab != NULL) {
 		kmem_cache_destroy(tfrc_ld_slab);
 		tfrc_ld_slab = NULL;
+	}
+
+	if (tfrc_ecn_echo_sum_slab != NULL) {
+		kmem_cache_destroy(tfrc_ecn_echo_sum_slab);
+		tfrc_ecn_echo_sum_slab = NULL;
 	}
 
 	return -ENOBUFS;
@@ -521,5 +574,10 @@ void tfrc_sp_li_exit(void)
 	if (tfrc_ld_slab != NULL) {
 		kmem_cache_destroy(tfrc_ld_slab);
 		tfrc_ld_slab = NULL;
+	}
+
+	if (tfrc_ecn_echo_sum_slab != NULL) {
+		kmem_cache_destroy(tfrc_ecn_echo_sum_slab);
+		tfrc_ecn_echo_sum_slab = NULL;
 	}
 }

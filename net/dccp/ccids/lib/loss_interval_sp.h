@@ -126,6 +126,31 @@ static inline void tfrc_ld_init(struct tfrc_loss_data *ld)
 	memset(ld, 0, sizeof(*ld));
 }
 
+/*
+ * tfrc_ecn_echo_sum_entry  -  store sent ecn codepoint info
+ * ecn_echo_sum:		ecn echo sum up to that packet
+ * seq_num:			sequence number of packet
+ * previous:			previous sent packet info
+ */
+struct tfrc_ecn_echo_sum_entry {
+	u8				ecn_echo_sum:1;
+	u64				seq_num:48;
+	struct tfrc_ecn_echo_sum_entry	*previous;
+};
+
+/*
+ * tfrc_tx_li_data  -  data about sent ecn and parsed options
+ * ecn_sums_head:		ecn data list
+ * seq_num:			sequence number of packet
+ * previous:			previous sent packet info
+ */
+struct tfrc_tx_li_data {
+	struct tfrc_ecn_echo_sum_entry	*ecn_sums_head;
+	u32				dropped_packets_data[1 + 9];
+	u32				loss_interval_data[1 + 9];
+	u8				skip_length;
+};
+
 struct tfrc_rx_hist;
 
 bool tfrc_sp_lh_interval_add(struct tfrc_loss_hist *, struct tfrc_rx_hist *,
@@ -136,5 +161,9 @@ void tfrc_sp_lh_update_i_mean(struct tfrc_loss_hist *lh, struct sk_buff *);
 void tfrc_sp_lh_cleanup(struct tfrc_loss_hist *lh);
 void tfrc_sp_ld_cleanup(struct tfrc_loss_data *ld);
 void tfrc_sp_ld_prepare_data(u8 loss_count, struct tfrc_loss_data *ld);
+int  tfrc_sp_get_random_ect(struct tfrc_tx_li_data *li_data, u64 seqn);
+bool tfrc_sp_check_ecn_sum(struct tfrc_tx_li_data *li_data, u8 *optval,
+			   u8 optlen, struct sk_buff *skb);
+void tfrc_sp_tx_ld_cleanup(struct tfrc_ecn_echo_sum_entry **);
 
 #endif	/* _DCCP_LI_HIST_SP_ */

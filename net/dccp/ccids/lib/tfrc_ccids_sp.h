@@ -66,6 +66,7 @@ enum tfrc_options {
  * @tx_t_ld:		  Time last doubled during slow start
  * @tx_t_nom:		  Nominal send time of next packet
  * @tx_hist:		  Packet history
+ * @tx_li_data:		  Loss interval data from options
  */
 struct tfrc_hc_tx_sock {
 	u64				tx_x;
@@ -84,6 +85,7 @@ struct tfrc_hc_tx_sock {
 	ktime_t				tx_t_ld;
 	ktime_t				tx_t_nom;
 	struct tfrc_tx_hist_entry	*tx_hist;
+	struct tfrc_tx_li_data		tx_li_data;
 };
 
 static inline struct tfrc_hc_tx_sock *tfrc_hc_tx_sk(const struct sock *sk)

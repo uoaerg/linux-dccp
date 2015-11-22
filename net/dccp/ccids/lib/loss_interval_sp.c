@@ -183,8 +183,11 @@ bool tfrc_sp_lh_interval_add(struct tfrc_loss_hist *lh,
 		if (len <= 0)
 			return false;
 
-		if (!tfrc_lh_closed_check(cur, cong_evt->tfrchrx_ccval))
+		if (!tfrc_lh_closed_check(cur, cong_evt->tfrchrx_ccval)) {
+			cur->li_losses += rh->num_losses;
+			rh->num_losses = 0;
 			return false;
+		}
 
 		/* RFC 5348, 5.3: length between subsequent intervals */
 		cur->li_length = len;
@@ -200,6 +203,9 @@ bool tfrc_sp_lh_interval_add(struct tfrc_loss_hist *lh,
 	cur->li_seqno	  = cong_evt_seqno;
 	cur->li_ccval	  = cong_evt->tfrchrx_ccval;
 	cur->li_is_closed = false;
+
+	cur->li_losses = rh->num_losses;
+	rh->num_losses = 0;
 
 	if (++lh->counter == 1)
 		lh->i_mean = cur->li_length = (*calc_first_li)(sk);

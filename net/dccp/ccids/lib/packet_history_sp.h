@@ -104,6 +104,7 @@ struct tfrc_rx_hist_entry {
  * @packet_size:	Packet size in bytes (as per RFC 3448, 3.1)
  * @bytes_recvd:	Number of bytes received since @bytes_start
  * @bytes_start:	Start time for counting @bytes_recvd
+ * @num_losses:		Number of losses detected
  */
 struct tfrc_rx_hist {
 	struct tfrc_rx_hist_entry *ring[TFRC_NDUPACK + 1];
@@ -116,6 +117,7 @@ struct tfrc_rx_hist {
 	u32			  packet_size,
 				  bytes_recvd;
 	ktime_t			  bytes_start;
+	u32			  num_losses;
 };
 
 /**

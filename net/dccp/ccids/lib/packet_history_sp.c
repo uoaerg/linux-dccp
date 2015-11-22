@@ -243,6 +243,7 @@ static int __two_after_loss(struct tfrc_rx_hist *h, struct sk_buff *skb, u32 n3)
 {
 	u64 s0 = tfrc_rx_hist_loss_prev(h)->tfrchrx_seqno,
 	    s1 = tfrc_rx_hist_entry(h, 1)->tfrchrx_seqno,
+	    n1 = tfrc_rx_hist_entry(h, 1)->tfrchrx_ndp,
 	    s2 = tfrc_rx_hist_entry(h, 2)->tfrchrx_seqno,
 	    s3 = DCCP_SKB_CB(skb)->dccpd_seq;
 
@@ -250,6 +251,7 @@ static int __two_after_loss(struct tfrc_rx_hist *h, struct sk_buff *skb, u32 n3)
 		h->loss_count = 3;
 		tfrc_sp_rx_hist_entry_from_skb(tfrc_rx_hist_entry(h, 3),
 					       skb, n3);
+		h->num_losses = dccp_loss_count(s0, s1, n1);
 		return 1;
 	}
 
@@ -263,13 +265,13 @@ static int __two_after_loss(struct tfrc_rx_hist *h, struct sk_buff *skb, u32 n3)
 		tfrc_sp_rx_hist_entry_from_skb(tfrc_rx_hist_entry(h, 2),
 					       skb, n3);
 		h->loss_count = 3;
+		h->num_losses = dccp_loss_count(s0, s1, n1);
 		return 1;
 	}
 
 	/* S0  <  S3  <  S1 */
 
 	if (dccp_loss_free(s0, s3, n3)) {
-		u64 n1 = tfrc_rx_hist_entry(h, 1)->tfrchrx_ndp;
 
 		if (dccp_loss_free(s3, s1, n1)) {
 			/* hole between S0 and S1 filled by S3 */
@@ -299,6 +301,7 @@ static int __two_after_loss(struct tfrc_rx_hist *h, struct sk_buff *skb, u32 n3)
 	h->loss_start = tfrc_rx_hist_index(h, 3);
 	tfrc_sp_rx_hist_entry_from_skb(tfrc_rx_hist_entry(h, 1), skb, n3);
 	h->loss_count = 3;
+	h->num_losses = dccp_loss_count(s0, s3, n3);
 
 	return 1;
 }

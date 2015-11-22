@@ -65,7 +65,7 @@ void tfrc_sp_tx_packet_history_exit(void)
 	}
 }
 
-int tfrc_sp_tx_hist_add(struct tfrc_tx_hist_entry **headp, u64 seqno)
+int tfrc_sp_tx_hist_add(struct tfrc_tx_hist_entry **headp, u64 seqno, u8 ccval)
 {
 	struct tfrc_tx_hist_entry *entry =
 		kmem_cache_alloc(tfrc_tx_hist_slab, gfp_any());
@@ -73,6 +73,7 @@ int tfrc_sp_tx_hist_add(struct tfrc_tx_hist_entry **headp, u64 seqno)
 	if (entry == NULL)
 		return -ENOBUFS;
 	entry->seqno = seqno;
+	entry->ccval = ccval;
 	entry->stamp = ktime_get_real();
 	entry->next  = *headp;
 	*headp	     = entry;

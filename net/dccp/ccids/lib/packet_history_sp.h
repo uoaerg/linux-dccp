@@ -57,6 +57,7 @@
 struct tfrc_tx_hist_entry {
 	struct tfrc_tx_hist_entry *next;
 	u64			  seqno;
+	u8			  ccval:4;
 	ktime_t			  stamp;
 };
 
@@ -69,12 +70,25 @@ static inline struct tfrc_tx_hist_entry *
 }
 #endif
 
-int  tfrc_sp_tx_hist_add(struct tfrc_tx_hist_entry **headp, u64 seqno);
+int tfrc_sp_tx_hist_add(struct tfrc_tx_hist_entry **headp, u64 seqno, u8 ccval);
 void tfrc_sp_tx_hist_purge(struct tfrc_tx_hist_entry **headp);
 
 #ifndef _DCCP_PKT_HIST_
 /* Subtraction a-b modulo-16, respects circular wrap-around */
 #define SUB16(a, b) (((a) + 16 - (b)) & 0xF)
+
+/*
+ * tfrc_tx_hist_two_rtt_old  -  returns entry at least two rtt old
+ * @head:	list of tx history entries
+ * @cur_ccval:	current ccval
+ */
+static inline struct tfrc_tx_hist_entry *
+	tfrc_tx_hist_two_rtt_old(struct tfrc_tx_hist_entry *head, u8 cur_ccval)
+{
+	while ((head != NULL) && (SUB16(cur_ccval, head->ccval) <= 8))
+		head = head->next;
+	return head;
+}
 
 /* Number of packets to wait after a missing packet (RFC 4342, 6.1) */
 #define TFRC_NDUPACK 3

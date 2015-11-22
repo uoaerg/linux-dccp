@@ -73,6 +73,17 @@ static int dccp_hdlr_seq_win(struct sock *sk, u64 seq_win, bool rx)
 	return 0;
 }
 
+static int dccp_hdlr_ecn(struct sock *sk, u64 ecn_incapable, bool rx)
+{
+	struct dccp_sock *dp = dccp_sk(sk);
+
+	if (rx)
+		dp->dccps_l_ecn_ok = (ecn_incapable == 0);
+	else
+		dp->dccps_r_ecn_ok = (ecn_incapable == 0);
+	return 0;
+}
+
 static int dccp_hdlr_ack_ratio(struct sock *sk, u64 ratio, bool rx)
 {
 	if (rx)
@@ -159,7 +170,7 @@ static const struct {
 	{ DCCPF_CCID,		 FEAT_AT_TX, FEAT_SP, 2,   dccp_hdlr_ccid     },
 	{ DCCPF_SHORT_SEQNOS,	 FEAT_AT_TX, FEAT_SP, 0,   NULL },
 	{ DCCPF_SEQUENCE_WINDOW, FEAT_AT_TX, FEAT_NN, 100, dccp_hdlr_seq_win  },
-	{ DCCPF_ECN_INCAPABLE,	 FEAT_AT_RX, FEAT_SP, 0,   NULL },
+	{ DCCPF_ECN_INCAPABLE,	 FEAT_AT_RX, FEAT_SP, 0,   dccp_hdlr_ecn      },
 	{ DCCPF_ACK_RATIO,	 FEAT_AT_TX, FEAT_NN, 2,   dccp_hdlr_ack_ratio},
 	{ DCCPF_SEND_ACK_VECTOR, FEAT_AT_RX, FEAT_SP, 0,   dccp_hdlr_ackvec   },
 	{ DCCPF_SEND_NDP_COUNT,  FEAT_AT_TX, FEAT_SP, 0,   dccp_hdlr_ndp      },

@@ -160,6 +160,17 @@ static void dccp_rcv_reset(struct sock *sk, struct sk_buff *skb)
 	dccp_time_wait(sk, DCCP_TIME_WAIT, 0);
 }
 
+static void dccp_handle_ecn_codepoints(struct sock *sk, struct sk_buff *skb)
+{
+	/*
+	 * When locally disabled, erase ECN codepoints (a peer conforming to
+	 * RFC 4340, 12.2 should set these to zero anyway).
+	 */
+	if (!dccp_sk(sk)->dccps_l_ecn_ok)
+		DCCP_SKB_CB(skb)->dccpd_ecn = INET_ECN_NOT_ECT;
+
+}
+
 static void dccp_handle_ackvec_processing(struct sock *sk, struct sk_buff *skb)
 {
 	struct dccp_ackvec *av = dccp_sk(sk)->dccps_hc_rx_ackvec;
@@ -374,6 +385,7 @@ int dccp_rcv_established(struct sock *sk, struct sk_buff *skb,
 	if (dccp_parse_options(sk, NULL, skb))
 		return 1;
 
+	dccp_handle_ecn_codepoints(sk, skb);
 	dccp_handle_ackvec_processing(sk, skb);
 	dccp_deliver_input_to_ccids(sk, skb);
 
@@ -683,6 +695,7 @@ int dccp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 
 	case DCCP_PARTOPEN:
 		/* Step 8: if using Ack Vectors, mark packet acknowledgeable */
+		dccp_handle_ecn_codepoints(sk, skb);
 		dccp_handle_ackvec_processing(sk, skb);
 		dccp_deliver_input_to_ccids(sk, skb);
 		/* fall through */

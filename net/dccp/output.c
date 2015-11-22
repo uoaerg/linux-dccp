@@ -132,6 +132,9 @@ static int dccp_transmit_skb(struct sock *sk, struct sk_buff *skb)
 			break;
 		}
 
+		if (dp->dccps_r_ecn_ok)
+			INET_ECN_xmit(sk);
+
 		icsk->icsk_af_ops->send_check(sk, skb);
 
 		if (set_ack)

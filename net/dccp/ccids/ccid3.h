@@ -67,13 +67,6 @@ enum ccid3_options {
 	TFRC_OPT_RECEIVE_RATE	 = 194,
 };
 
-/* TFRC sender states */
-enum ccid3_hc_tx_states {
-	TFRC_SSTATE_NO_SENT = 1,
-	TFRC_SSTATE_NO_FBACK,
-	TFRC_SSTATE_FBACK,
-};
-
 /**
  * struct ccid3_hc_tx_sock - CCID3 sender half-connection socket
  * @tx_x:		  Current sending rate in 64 * bytes per second
@@ -84,7 +77,7 @@ enum ccid3_hc_tx_states {
  * @tx_s:		  Packet size in bytes
  * @tx_t_rto:		  Nofeedback Timer setting in usecs
  * @tx_t_ipi:		  Interpacket (send) interval (RFC 3448, 4.6) in usecs
- * @tx_state:		  Sender state, one of %ccid3_hc_tx_states
+ * @tx_feedback:	  Whether feedback has been received or not
  * @tx_last_win_count:	  Last window counter sent
  * @tx_t_last_win_count:  Timestamp of earliest packet
  *			  with last_win_count value sent
@@ -102,7 +95,7 @@ struct ccid3_hc_tx_sock {
 	u32				tx_t_rto;
 	u32				tx_t_ipi;
 	u16				tx_s;
-	enum ccid3_hc_tx_states		tx_state:8;
+	bool				tx_feedback:1;
 	u8				tx_last_win_count;
 	ktime_t				tx_t_last_win_count;
 	struct timer_list		tx_no_feedback_timer;

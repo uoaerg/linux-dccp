@@ -47,31 +47,6 @@ static bool ccid3_debug;
 /*
  *	Transmitter Half-Connection Routines
  */
-#ifdef CONFIG_IP_DCCP_CCID3_DEBUG
-static const char *ccid3_tx_state_name(enum ccid3_hc_tx_states state)
-{
-	static const char *const ccid3_state_names[] = {
-	[TFRC_SSTATE_NO_SENT]  = "NO_SENT",
-	[TFRC_SSTATE_NO_FBACK] = "NO_FBACK",
-	[TFRC_SSTATE_FBACK]    = "FBACK",
-	};
-
-	return ccid3_state_names[state];
-}
-#endif
-
-static void ccid3_hc_tx_set_state(struct sock *sk,
-				  enum ccid3_hc_tx_states state)
-{
-	struct ccid3_hc_tx_sock *hc = ccid3_hc_tx_sk(sk);
-	enum ccid3_hc_tx_states oldstate = hc->tx_state;
-
-	ccid3_pr_debug("%s(%p) %-8.8s -> %s\n",
-		       dccp_role(sk), sk, ccid3_tx_state_name(oldstate),
-		       ccid3_tx_state_name(state));
-	WARN_ON(state == oldstate);
-	hc->tx_state = state;
-}
 
 /*
  * Compute the initial sending rate X_init in the manner of RFC 3390:
@@ -208,16 +183,15 @@ static void ccid3_hc_tx_no_feedback_timer(unsigned long data)
 		goto restart_timer;
 	}
 
-	ccid3_pr_debug("%s(%p, state=%s) - entry\n", dccp_role(sk), sk,
-		       ccid3_tx_state_name(hc->tx_state));
+	ccid3_pr_debug("%s(%p) entry with%s feedback\n", dccp_role(sk), sk,
+		       hc->tx_feedback ? "" : "out");
 
 	/* Ignore and do not restart after leaving the established state */
 	if ((1 << sk->sk_state) & ~(DCCPF_OPEN | DCCPF_PARTOPEN))
 		goto out;
 
 	/* Reset feedback state to "no feedback received" */
-	if (hc->tx_state == TFRC_SSTATE_FBACK)
-		ccid3_hc_tx_set_state(sk, TFRC_SSTATE_NO_FBACK);
+	hc->tx_feedback = false;
 
 	/*
 	 * Determine new allowed sending rate X as per draft rfc3448bis-00, 4.4
@@ -292,7 +266,7 @@ static int ccid3_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
 	if (unlikely(skb->len == 0))
 		return -EBADMSG;
 
-	if (hc->tx_state == TFRC_SSTATE_NO_SENT) {
+	if (hc->tx_s == 0) {
 		sk_reset_timer(sk, &hc->tx_no_feedback_timer, (jiffies +
 			       usecs_to_jiffies(TFRC_INITIAL_TIMEOUT)));
 		hc->tx_last_win_count	= 0;
@@ -325,8 +299,6 @@ static int ccid3_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
 			hc->tx_x <<= 6;
 		}
 		ccid3_update_send_interval(hc);
-
-		ccid3_hc_tx_set_state(sk, TFRC_SSTATE_NO_FBACK);
 
 	} else {
 		delay = ktime_us_delta(hc->tx_t_nom, now);
@@ -411,8 +383,8 @@ static void ccid3_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
 	/*
 	 * Update allowed sending rate X as per draft rfc3448bis-00, 4.2/3
 	 */
-	if (hc->tx_state == TFRC_SSTATE_NO_FBACK) {
-		ccid3_hc_tx_set_state(sk, TFRC_SSTATE_FBACK);
+	if (!hc->tx_feedback) {
+		hc->tx_feedback = true;
 
 		if (hc->tx_t_rto == 0) {
 			/*
@@ -516,7 +488,6 @@ static int ccid3_hc_tx_init(struct ccid *ccid, struct sock *sk)
 {
 	struct ccid3_hc_tx_sock *hc = ccid_priv(ccid);
 
-	hc->tx_state = TFRC_SSTATE_NO_SENT;
 	hc->tx_hist  = NULL;
 	setup_timer(&hc->tx_no_feedback_timer,
 			ccid3_hc_tx_no_feedback_timer, (unsigned long)sk);

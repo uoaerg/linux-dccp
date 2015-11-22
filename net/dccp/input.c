@@ -71,6 +71,7 @@ static int dccp_rcv_close(struct sock *sk, struct sk_buff *skb)
 		/* fall through */
 	case DCCP_REQUESTING:
 	case DCCP_ACTIVE_CLOSEREQ:
+		dst_confirm(__sk_dst_get(sk));
 		dccp_send_reset(sk, DCCP_RESET_CODE_CLOSED);
 		dccp_done(sk);
 		break;
@@ -155,6 +156,8 @@ static void dccp_rcv_reset(struct sock *sk, struct sk_buff *skb)
 	/* Queue the equivalent of TCP fin so that dccp_recvmsg exits the loop */
 	dccp_fin(sk, skb);
 
+	if (dccp_hdr_reset(skb)->dccph_reset_code == DCCP_RESET_CODE_CLOSED)
+		dst_confirm(__sk_dst_get(sk));
 	if (err && !sock_flag(sk, SOCK_DEAD))
 		sk_wake_async(sk, SOCK_WAKE_IO, POLL_ERR);
 	dccp_time_wait(sk, DCCP_TIME_WAIT, 0);
@@ -253,8 +256,10 @@ static int dccp_check_seqno(struct sock *sk, struct sk_buff *skb)
 
 		if (dh->dccph_type != DCCP_PKT_SYNC &&
 		    ackno != DCCP_PKT_WITHOUT_ACK_SEQ &&
-		    after48(ackno, dp->dccps_gar))
+		    after48(ackno, dp->dccps_gar)) {
+			dst_confirm(__sk_dst_get(sk));
 			dp->dccps_gar = ackno;
+		}
 	} else {
 		unsigned long now = jiffies;
 		/*
@@ -487,6 +492,8 @@ static int dccp_rcv_request_sent_state_process(struct sock *sk,
 		/* Make sure socket is routed, for correct metrics. */
 		icsk->icsk_af_ops->rebuild_header(sk);
 
+		dst_confirm(__sk_dst_get(sk));
+
 		if (!sock_flag(sk, SOCK_DEAD)) {
 			sk->sk_state_change(sk);
 			sk_wake_async(sk, SOCK_WAKE_IO, POLL_OUT);
@@ -567,6 +574,8 @@ static int dccp_rcv_respond_partopen_state_process(struct sock *sk,
 
 			dp->dccps_syn_rtt = dccp_sample_rtt(sk, 10 * delta);
 		}
+
+		dst_confirm(__sk_dst_get(sk));
 
 		dp->dccps_osr = DCCP_SKB_CB(skb)->dccpd_seq;
 		dccp_set_state(sk, DCCP_OPEN);

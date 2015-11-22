@@ -552,6 +552,9 @@ static int do_dccp_setsockopt(struct sock *sk, int level, int optname,
 		else
 			dp->dccps_tx_qlen = val;
 		break;
+	case DCCP_SOCKOPT_GET_ECN_BITS:
+		dp->dccps_get_ecn_bits = (val != 0);
+		break;
 	default:
 		err = -ENOPROTOOPT;
 		break;
@@ -664,6 +667,9 @@ static int do_dccp_getsockopt(struct sock *sk, int level, int optname,
 		break;
 	case DCCP_SOCKOPT_QPOLICY_TXQLEN:
 		val = dp->dccps_tx_qlen;
+		break;
+	case DCCP_SOCKOPT_GET_ECN_BITS:
+		val = dp->dccps_get_ecn_bits;
 		break;
 	case 128 ... 191:
 		return ccid_hc_rx_getsockopt(dp->dccps_hc_rx_ccid, sk, optname,
@@ -831,6 +837,13 @@ out_discard:
 
 EXPORT_SYMBOL_GPL(dccp_sendmsg);
 
+static void dccp_cmsg_recv_ecn_bits(struct msghdr *msg, struct sk_buff *skb)
+{
+	u8 val = DCCP_SKB_CB(skb)->dccpd_ecn;
+
+	put_cmsg(msg, SOL_DCCP, DCCP_SCM_ECN_BITS, sizeof(val), &val);
+}
+
 int dccp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 		 int flags, int *addr_len)
 {
@@ -927,6 +940,10 @@ verify_sock_status:
 		}
 		if (flags & MSG_TRUNC)
 			len = skb->len;
+
+		if (dccp_sk(sk)->dccps_get_ecn_bits)
+			dccp_cmsg_recv_ecn_bits(msg, skb);
+
 	found_fin_ok:
 		if (!(flags & MSG_PEEK))
 			sk_eat_skb(sk, skb);

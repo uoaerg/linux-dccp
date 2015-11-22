@@ -44,6 +44,8 @@ than 3 are not accepted. Values need to be wrapped into a cmsg(3) header:
 	cmsg->cmsg_level = SOL_DCCP;
 	cmsg->cmsg_type	 = DCCP_SCM_ECN_BITS;
 	cmsg->cmsg_len	 = CMSG_LEN(sizeof(uint8_t));	/* or CMSG_LEN(1) */
+The process can be reversed for recvmsg(2) when the DCCP_SOCKOPT_GET_ECN_BITS
+socket option is enabled (see below), using the same cmsg encapsulation.
 
 
 Missing features
@@ -134,6 +136,10 @@ DCCP_SOCKOPT_RECV_CSCOV is for the receiver and has a different meaning: it
 	coverage value are also acceptable. The higher the number, the more
 	restrictive this setting (see [RFC 4340, sec. 9.2.1]). Partial coverage
 	settings are inherited to the child socket after accept().
+
+DCCP_SOCKOPT_GET_ECN_BITS takes a boolean int value and enables the delivery
+	of ECN bits as ancillary data to recvmsg(2). The data is received as
+	uint8_t value at SOL_DCCP level and cmsg_type of DCCP_SCM_ECN_BITS.
 
 The following two options apply to CCID 3 exclusively and are getsockopt()-only.
 In either case, a TFRC info struct (defined in <linux/tfrc.h>) is returned.

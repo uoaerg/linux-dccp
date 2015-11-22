@@ -240,6 +240,7 @@ struct dccp_ackvec;
  * @dccps_r_seq_win - remote Sequence Window (influences seq number validity)
  * @dccps_l_ecn_ok - this host understands ECN bits (RFC 4340, 12.1)
  * @dccps_r_ecn_ok - the remote end understands ECN bits
+ * @dccps_get_ecn_bits - this host requests ECN bits as recvmsg() ancillary data
  * @dccps_pcslen - sender   partial checksum coverage (via sockopt)
  * @dccps_pcrlen - receiver partial checksum coverage (via sockopt)
  * @dccps_send_ndp_count - local Send NDP Count feature (7.7.2)
@@ -286,7 +287,8 @@ struct dccp_sock {
 	__u64				dccps_l_seq_win:48;
 	__u64				dccps_r_seq_win:48;
 	bool				dccps_l_ecn_ok:1,
-					dccps_r_ecn_ok:1;
+					dccps_r_ecn_ok:1,
+					dccps_get_ecn_bits:1;
 	__u8				dccps_pcslen:4;
 	__u8				dccps_pcrlen:4;
 	__u8				dccps_send_ndp_count:1;

@@ -121,7 +121,10 @@ endchoice
 endif	# IP_DCCP_CCID4
 
 config IP_DCCP_TFRC_LIB
-	def_bool y if (IP_DCCP_CCID3 || IP_DCCP_CCID4)
+	def_bool y if IP_DCCP_CCID3
+
+config IP_DCCP_TFRC_SP_LIB
+	def_bool y if IP_DCCP_CCID4
 
 config IP_DCCP_TFRC_DEBUG
 	def_bool y if (IP_DCCP_CCID3_DEBUG || IP_DCCP_CCID4_DEBUG)

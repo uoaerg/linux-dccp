@@ -6,6 +6,13 @@
  *
  *  An implementation of the DCCP protocol
  *
+ *  Copyright (c) 2009 Ivo Calado, Erivaldo Xavier, Leandro Sales
+ *
+ *  This code has been developed by the Federal University of Campina Grande
+ *  Embedded Systems and Pervasive Computing Lab. For further information
+ *  please see http://embedded.ufcg.edu.br/
+ *  <ivocalado@embedded.ufcg.edu.br> <desadoc@gmail.com> <leandroal@gmail.com>
+ *
  *  Copyright (c) 2007 Leandro Sales, Tommi Saviranta
  *
  *  This code has been developed by the Federal University of Campina Grande
@@ -298,8 +305,13 @@ static int ccid4_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
 		if (delay >= TFRC_T_DELTA)
 			return (u32)delay / USEC_PER_MSEC;
 
-		tfrc_hc_tx_update_win_count(hc, now);
+		tfrc_sp_hc_tx_update_win_count(hc, now);
 	}
+
+	if (dccp_data_packet(skb))
+		DCCP_SKB_CB(skb)->dccpd_ecn =
+			tfrc_sp_get_random_ect(&hc->tx_li_data,
+					       DCCP_SKB_CB(skb)->dccpd_seq);
 
 	/* prepare to send now (add options etc.) */
 	dp->dccps_hc_tx_insert_options = 1;
@@ -317,14 +329,15 @@ static void ccid4_hc_tx_packet_sent(struct sock *sk, unsigned int len)
 	/* Changes to s will become effective the next time X is computed */
 	hc->tx_s = ccid4_hc_tx_measure_packet_size(sk, len);
 
-	if (tfrc_tx_hist_add(&hc->tx_hist, dccp_sk(sk)->dccps_gss))
-		DCCP_CRIT("packet history - out of memory!");
+	if (tfrc_sp_tx_hist_add(&hc->tx_hist, dccp_sk(sk)->dccps_gss,
+		hc->tx_last_win_count))
+			DCCP_CRIT("packet history - out of memory!");
 }
 
 static void ccid4_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
 {
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
-	struct tfrc_tx_hist_entry *acked;
+	struct tfrc_tx_hist_entry *acked, *old;
 	ktime_t now;
 	unsigned long t_nfb;
 	u32 r_sample;
@@ -345,7 +358,10 @@ static void ccid4_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
 	if (acked == NULL)
 		return;
 	/* For the sake of RTT sampling, ignore/remove all older entries */
-	tfrc_tx_hist_purge(&acked->next);
+	old = tfrc_tx_hist_two_rtt_old(hc->tx_hist,
+				       DCCP_SKB_CB(skb)->dccpd_ccval);
+	if (old != NULL)
+		tfrc_sp_tx_hist_purge(&old->next);
 
 	/* Update the moving average for the RTT estimate (RFC 3448, 4.3) */
 	now	  = ktime_get_real();
@@ -378,7 +394,7 @@ static void ccid4_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
 
 	/* Update sending rate (step 4 of [RFC 3448, 4.3]) */
 	if (hc->tx_p > 0)
-		hc->tx_x_calc = tfrc_calc_x(NOM_PACKET_SIZE, hc->tx_rtt, hc->tx_p);
+		hc->tx_x_calc = tfrc_sp_calc_x(NOM_PACKET_SIZE, hc->tx_rtt, hc->tx_p);
 	ccid4_hc_tx_update_x(sk, &now);
 
 done_computing_x:
@@ -455,6 +471,8 @@ static int ccid4_hc_tx_parse_options(struct sock *sk, u8 packet_type,
 				     u8 option, u8 *optval, u8 optlen)
 {
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
+	struct sk_buff *skb;
+	u32 new_p;
 	__be32 opt_val;
 
 	switch (option) {
@@ -479,14 +497,72 @@ static int ccid4_hc_tx_parse_options(struct sock *sk, u8 packet_type,
 				       dccp_role(sk), sk, opt_val);
 		} else {
 			/* Update the fixpoint Loss Event Rate fraction */
-			hc->tx_p = tfrc_invert_loss_event_rate(opt_val);
+			hc->tx_p = tfrc_sp_invert_loss_event_rate(opt_val);
 
 			ccid4_pr_debug("%s(%p), LOSS_EVENT_RATE=%u\n",
 				       dccp_role(sk), sk, opt_val);
 		}
 		break;
 	case TFRC_OPT_DROPPED_PACKETS:
-		/* FIXME: Implement this sock option according to ccid-4 draft */
+		tfrc_sp_parse_dropped_packets_opt(&hc->tx_li_data,
+						  optval, optlen);
+
+		skb = skb_peek(&sk->sk_receive_queue);
+
+		if (skb == NULL)
+			break;
+
+		if (!tfrc_sp_check_ecn_sum(&hc->tx_li_data,
+					   optval, optlen, skb)) {
+			/*
+			 * TODO: consider ecn sum test fail
+			 * and update allowed sending rate
+			 */
+		}
+
+		new_p =
+		tfrc_sp_p_from_loss_intervals_opt(&hc->tx_li_data,
+						  hc->tx_hist,
+						  hc->tx_last_win_count,
+						  DCCP_SKB_CB(skb)->dccpd_seq);
+		if (hc->tx_p != new_p) {
+			/*
+			 * TODO: use p value obtained
+			 * from loss intervals option
+			 */
+		}
+
+		break;
+	case TFRC_OPT_LOSS_INTERVALS:
+
+		hc->tx_li_data.skip_length = *optval;
+		tfrc_sp_parse_loss_intervals_opt(&hc->tx_li_data,
+						 optval, optlen);
+
+		skb = skb_peek(&sk->sk_receive_queue);
+
+		if (skb == NULL)
+			break;
+
+		if (!tfrc_sp_check_ecn_sum(&hc->tx_li_data,
+					   optval, optlen, skb)) {
+			/*
+			 * TODO: consider ecn sum test fail
+			 * and update allowed sending rate
+			 */
+		}
+
+		new_p =
+		tfrc_sp_p_from_loss_intervals_opt(&hc->tx_li_data,
+						  hc->tx_hist,
+						  hc->tx_last_win_count,
+						  DCCP_SKB_CB(skb)->dccpd_seq);
+		if (hc->tx_p != new_p) {
+			/*
+			 * TODO: use p value obtained
+			 * from loss intervals option
+			 */
+		}
 		break;
 	}
 	return 0;
@@ -507,7 +583,8 @@ static void ccid4_hc_tx_exit(struct sock *sk)
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
 
 	sk_stop_timer(sk, &hc->tx_no_feedback_timer);
-	tfrc_tx_hist_purge(&hc->tx_hist);
+	tfrc_sp_tx_hist_purge(&hc->tx_hist);
+	tfrc_sp_tx_ld_cleanup(&hc->tx_li_data.ecn_sums_head);
 }
 
 static void ccid4_hc_tx_get_info(struct sock *sk, struct tcp_info *info)
@@ -586,7 +663,7 @@ static void ccid4_hc_rx_send_feedback(struct sock *sk,
 		 * have a reliable estimate for R_m of [RFC 3448, 6.2] and so
 		 * always check whether at least RTT time units were covered.
 		 */
-		hc->rx_x_recv = tfrc_rx_hist_x_recv(&hc->rx_hist, hc->rx_x_recv);
+		hc->rx_x_recv = tfrc_sp_rx_hist_x_recv(&hc->rx_hist, hc->rx_x_recv);
 		break;
 	case TFRC_FBACK_PERIODIC:
 		/*
@@ -596,7 +673,7 @@ static void ccid4_hc_rx_send_feedback(struct sock *sk,
 		 */
 		if (hc->rx_hist.bytes_recvd == 0)
 			goto prepare_for_next_time;
-		hc->rx_x_recv = tfrc_rx_hist_x_recv(&hc->rx_hist, hc->rx_x_recv);
+		hc->rx_x_recv = tfrc_sp_rx_hist_x_recv(&hc->rx_hist, hc->rx_x_recv);
 		break;
 	default:
 		return;
@@ -615,7 +692,8 @@ prepare_for_next_time:
 
 static int ccid4_hc_rx_insert_options(struct sock *sk, struct sk_buff *skb)
 {
-	const struct tfrc_hc_rx_sock *hc = tfrc_hc_rx_sk(sk);
+	u16 dropped_length, loss_intervals_length;
+	struct tfrc_hc_rx_sock *hc = tfrc_hc_rx_sk(sk);
 	__be32 x_recv, pinv;
 
 	if (!(sk->sk_state == DCCP_OPEN || sk->sk_state == DCCP_PARTOPEN))
@@ -627,10 +705,24 @@ static int ccid4_hc_rx_insert_options(struct sock *sk, struct sk_buff *skb)
 	x_recv = htonl(hc->rx_x_recv);
 	pinv   = htonl(hc->rx_pinv);
 
+	loss_intervals_length	=
+		(hc->rx_li_data.counter > TFRC_LOSS_INTERVALS_OPT_MAX_LENGTH) ?
+		 TFRC_LOSS_INTERVALS_OPT_MAX_LENGTH : hc->rx_li_data.counter;
+	dropped_length		=
+		(hc->rx_li_data.counter > TFRC_DROP_OPT_MAX_LENGTH) ?
+		 TFRC_DROP_OPT_MAX_LENGTH : hc->rx_li_data.counter;
+
+	tfrc_sp_ld_prepare_data(hc->rx_hist.loss_count, &hc->rx_li_data);
+
 	if (dccp_insert_option(skb, TFRC_OPT_LOSS_EVENT_RATE,
 			       &pinv, sizeof(pinv)) ||
 	    dccp_insert_option(skb, TFRC_OPT_RECEIVE_RATE,
-			       &x_recv, sizeof(x_recv)))
+			       &x_recv, sizeof(x_recv)) ||
+	    dccp_insert_option(skb, TFRC_OPT_LOSS_INTERVALS,
+			       &hc->rx_li_data.loss_intervals_opts[0],
+			       1 + loss_intervals_length*9) ||
+	    dccp_insert_option(skb, TFRC_OPT_DROPPED_PACKETS,
+			       &hc->rx_li_data.drop_opts[0], dropped_length*3))
 		return -1;
 
 	return 0;
@@ -660,12 +752,12 @@ static u32 ccid4_first_li(struct sock *sk)
 	if (unlikely(hc->rx_feedback == TFRC_FBACK_NONE))
 		return 5;
 
-	x_recv = tfrc_rx_hist_x_recv(&hc->rx_hist, hc->rx_x_recv);
+	x_recv = tfrc_sp_rx_hist_x_recv(&hc->rx_hist, hc->rx_x_recv);
 	if (x_recv == 0)
 		goto failed;
 
 	fval = scaled_div32(scaled_div(NOM_PACKET_SIZE, rtt), x_recv);
-	p = tfrc_calc_x_reverse_lookup(fval);
+	p = tfrc_sp_calc_x_reverse_lookup(fval);
 
 	ccid4_pr_debug("%s(%p), receive rate=%u bytes/s, implied "
 		       "loss rate=%u\n", dccp_role(sk), sk, x_recv, p);
@@ -685,8 +777,9 @@ static void ccid4_hc_rx_packet_recv(struct sock *sk, struct sk_buff *skb)
 	/*
 	 * Perform loss detection and handle pending losses
 	 */
-	if (tfrc_rx_congestion_event(&hc->rx_hist, &hc->rx_li_hist,
-				     skb, ndp, ccid4_first_li, sk))
+	if (tfrc_sp_rx_congestion_event(&hc->rx_hist, &hc->rx_li_hist,
+					&hc->rx_li_data,
+					skb, ndp, ccid4_first_li, sk))
 		ccid4_hc_rx_send_feedback(sk, skb, TFRC_FBACK_PARAM_CHANGE);
 	/*
 	 * Feedback for first non-empty data packet (RFC 3448, 6.3)
@@ -706,15 +799,18 @@ static int ccid4_hc_rx_init(struct ccid *ccid, struct sock *sk)
 	struct tfrc_hc_rx_sock *hc = ccid_priv(ccid);
 
 	tfrc_lh_init(&hc->rx_li_hist);
-	return tfrc_rx_hist_init(&hc->rx_hist, sk);
+	tfrc_ld_init(&hc->rx_li_data);
+
+	return tfrc_sp_rx_hist_init(&hc->rx_hist, sk);
 }
 
 static void ccid4_hc_rx_exit(struct sock *sk)
 {
 	struct tfrc_hc_rx_sock *hc = tfrc_hc_rx_sk(sk);
 
-	tfrc_rx_hist_purge(&hc->rx_hist);
-	tfrc_lh_cleanup(&hc->rx_li_hist);
+	tfrc_sp_rx_hist_purge(&hc->rx_hist);
+	tfrc_sp_lh_cleanup(&hc->rx_li_hist);
+	tfrc_sp_ld_cleanup(&hc->rx_li_data);
 }
 
 static void ccid4_hc_rx_get_info(struct sock *sk, struct tcp_info *info)
@@ -736,7 +832,7 @@ static int ccid4_hc_rx_getsockopt(struct sock *sk, const int optname, int len,
 			return -EINVAL;
 		rx_info.tfrcrx_x_recv = hc->rx_x_recv;
 		rx_info.tfrcrx_rtt    = tfrc_rx_hist_rtt(&hc->rx_hist);
-		rx_info.tfrcrx_p      = tfrc_invert_loss_event_rate(hc->rx_pinv);
+		rx_info.tfrcrx_p      = tfrc_sp_invert_loss_event_rate(hc->rx_pinv);
 		len = sizeof(rx_info);
 		val = &rx_info;
 		break;
@@ -758,7 +854,7 @@ struct ccid_operations ccid4_ops = {
 	.ccid_hc_tx_exit	   = ccid4_hc_tx_exit,
 	.ccid_hc_tx_send_packet	   = ccid4_hc_tx_send_packet,
 	.ccid_hc_tx_packet_sent	   = ccid4_hc_tx_packet_sent,
-	.ccid_hc_tx_probe	   = tfrc_hc_tx_probe,
+	.ccid_hc_tx_probe	   = tfrc_sp_hc_tx_probe,
 	.ccid_hc_tx_packet_recv	   = ccid4_hc_tx_packet_recv,
 	.ccid_hc_tx_parse_options  = ccid4_hc_tx_parse_options,
 	.ccid_hc_rx_obj_size	   = sizeof(struct tfrc_hc_rx_sock),

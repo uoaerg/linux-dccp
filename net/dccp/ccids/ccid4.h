@@ -6,6 +6,13 @@
  *
  *  An implementation of the DCCP protocol
  *
+ *  Copyright (c) 2009 Ivo Calado, Erivaldo Xavier, Leandro Sales
+ *
+ *  This code has been developed by the Federal University of Campina Grande
+ *  Embedded Systems and Pervasive Computing Lab. For further information
+ *  please see http://embedded.ufcg.edu.br/
+ *  <ivocalado@embedded.ufcg.edu.br> <desadoc@gmail.com> <leandroal@gmail.com>
+ *
  *  Copyright (c) 2007 Leandro Sales, Tommi Saviranta
  *
  *  This code has been developed by the Federal University of Campina Grande
@@ -47,7 +54,7 @@
 #ifndef _DCCP_CCID4_H_
 #define _DCCP_CCID4_H_
 
-#include "lib/tfrc_ccids.h"
+#include "lib/tfrc_ccids_sp.h"
 
 /* The nominal packet size to be used into TFRC equation as per CCID-4 draft*/
 #define NOM_PACKET_SIZE            1460

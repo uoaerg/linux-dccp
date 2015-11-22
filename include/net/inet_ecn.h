@@ -66,9 +66,13 @@ static inline void INET_ECN_dontxmit(struct sock *sk)
       (label) &= ~htonl(INET_ECN_MASK << 20);	\
     } while (0)
 
+/*
+ * XXX Hack: copy over the ECN bits from inet_sk to inet6_sk.
+ *           This should be replaced by a single `dsfield' in inet
+ */
 #define	IP6_ECN_flow_xmit(sk, label) do {				\
-	if (INET_ECN_is_capable(inet6_sk(sk)->tclass))			\
-		(label) |= htonl(INET_ECN_ECT_0 << 20);			\
+	IP6_ECN_flow_init(label);					\
+	(label) |= htonl((inet_sk(sk)->tos & INET_ECN_MASK) << 20);	\
     } while (0)
 
 static inline int IP_ECN_set_ce(struct iphdr *iph)

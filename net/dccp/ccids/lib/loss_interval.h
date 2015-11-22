@@ -67,7 +67,7 @@ struct tfrc_rx_hist;
 
 int tfrc_lh_interval_add(struct tfrc_loss_hist *, struct tfrc_rx_hist *,
 			 u32 (*first_li)(struct sock *), struct sock *);
-u8 tfrc_lh_update_i_mean(struct tfrc_loss_hist *lh, struct sk_buff *);
+void tfrc_lh_update_i_mean(struct tfrc_loss_hist *lh, struct sk_buff *);
 void tfrc_lh_cleanup(struct tfrc_loss_hist *lh);
 
 #endif /* _DCCP_LI_HIST_ */

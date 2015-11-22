@@ -149,7 +149,7 @@ int tfrc_rx_handle_loss(struct tfrc_rx_hist *h, struct tfrc_loss_hist *lh,
 			struct sk_buff *skb, const u64 ndp,
 			u32 (*first_li)(struct sock *sk), struct sock *sk);
 u32 tfrc_rx_hist_sample_rtt(struct tfrc_rx_hist *h, const struct sk_buff *skb);
-int tfrc_rx_hist_alloc(struct tfrc_rx_hist *h);
+int tfrc_rx_hist_init(struct tfrc_rx_hist *h, struct sock *sk);
 void tfrc_rx_hist_purge(struct tfrc_rx_hist *h);
 
 #endif /* _DCCP_PKT_HIST_ */

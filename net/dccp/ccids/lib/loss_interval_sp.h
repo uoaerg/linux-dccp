@@ -164,6 +164,12 @@ void tfrc_sp_ld_prepare_data(u8 loss_count, struct tfrc_loss_data *ld);
 int  tfrc_sp_get_random_ect(struct tfrc_tx_li_data *li_data, u64 seqn);
 bool tfrc_sp_check_ecn_sum(struct tfrc_tx_li_data *li_data, u8 *optval,
 			   u8 optlen, struct sk_buff *skb);
+struct tfrc_tx_hist_entry;
+u32 tfrc_sp_p_from_loss_intervals_opt(struct tfrc_tx_li_data *li_data,
+				      struct tfrc_tx_hist_entry *head,
+				      u8 curr_ccval, u64 seqno);
+void tfrc_sp_parse_dropped_packets_opt(struct tfrc_tx_li_data *li_data,
+				       u8 *optval, u8 optlen);
 void tfrc_sp_tx_ld_cleanup(struct tfrc_ecn_echo_sum_entry **);
 
 #endif	/* _DCCP_LI_HIST_SP_ */

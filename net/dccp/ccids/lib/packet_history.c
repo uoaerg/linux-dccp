@@ -359,6 +359,27 @@ bool tfrc_rx_congestion_event(struct tfrc_rx_hist *h,
 		 */
 		new_event = tfrc_lh_interval_add(lh, h, first_li, sk);
 		__three_after_loss(h);
+
+	} else if (dccp_data_packet(skb) && dccp_skb_is_ecn_ce(skb)) {
+		/*
+		 * We only test for ECN marks on data packets. This is the way
+		 * the RFC considers ECN marks - a future implementation may
+		 * find it useful to also check ECN marks on non-data packets.
+		 */
+		new_event = tfrc_lh_interval_add(lh, h, first_li, sk);
+		/*
+		 * Also combinations of loss and ECN-marks (as per the warning)
+		 * are not supported. The permutations of loss combined with or
+		 * without ECN-marks create a lot of complexity, which does not
+		 * seem warranted: ECN-marked packets immediately trigger con-
+		 * gestion events.
+		 * Testing is needed to see whether ignoring the loss_count in
+		 * light of an ECN-marked-CE event really has any disadvantages.
+		 */
+		if (new_event && h->loss_count) {
+			DCCP_WARN("Ignoring loss count due to ECN\n");
+			tfrc_rx_hist_resume_rtt_sampling(h);
+		}
 	}
 
 	/*

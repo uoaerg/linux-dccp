@@ -251,6 +251,16 @@ void dccp_ackvec_input(struct dccp_ackvec *av, struct sk_buff *skb)
 	u64 seqno = DCCP_SKB_CB(skb)->dccpd_seq;
 	enum dccp_ackvec_states state = DCCPAV_RECEIVED;
 
+	if (DCCP_SKB_CB(skb)->dccpd_ecn == INET_ECN_CE)
+		state = DCCPAV_ECN_MARKED;
+	else if (DCCP_SKB_CB(skb)->dccpd_ecn == INET_ECN_ECT_1)
+		/*
+		 * FIXME: As long as we get ECT(0), the nonce sum is 0 as per
+		 * RFC 3540, sec. 3. Supporting ECT(1) requires more work, as
+		 * e.g. older Ack Vector cells must then be summed over again.
+		 */
+		DCCP_WARN("Ack Vector Nonce sum does not yet support ECT(1)\n");
+
 	if (dccp_ackvec_is_empty(av)) {
 		dccp_ackvec_add_new(av, 1, seqno, state);
 		av->av_tail_ackno = seqno;

@@ -7,6 +7,7 @@ dccp-y := ccid.o feat.o input.o minisocks.o options.o output.o proto.o timer.o \
 #
 # CCID-2 is default (RFC 4340, p. 77) and has Ack Vectors as dependency
 dccp-y += ccids/ccid2.o ackvec.o
+dccp-$(CONFIG_IP_DCCP_CCID0)	+= ccids/ccid0.o
 dccp-$(CONFIG_IP_DCCP_CCID3)	+= ccids/ccid3.o
 dccp-$(CONFIG_IP_DCCP_TFRC_LIB) += ccids/lib/tfrc.o		\
 				   ccids/lib/tfrc_equation.o	\

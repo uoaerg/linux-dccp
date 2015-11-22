@@ -612,7 +612,8 @@ static u8 dccp_feat_is_valid_sp_val(u8 feat_num, u8 val)
 {
 	switch (feat_num) {
 	case DCCPF_CCID:
-		return val == DCCPC_CCID2 || val == DCCPC_CCID3;
+		return	val == DCCPC_CCID2 || val == DCCPC_CCID3 ||
+			(val >= DCCPC_TESTING_MIN && val <= DCCPC_TESTING_MAX);
 	/* Type-check Boolean feature values: */
 	case DCCPF_SHORT_SEQNOS:
 	case DCCPF_ECN_INCAPABLE:
@@ -849,6 +850,18 @@ EXPORT_SYMBOL_GPL(dccp_feat_signal_nn_change);
  */
 static const struct ccid_dependency *dccp_feat_ccid_deps(u8 ccid, bool is_local)
 {
+	static const struct ccid_dependency ccid0_dependencies[2][2] = {
+		/*
+		 * The UDP-like does not have dependencies. For experimentation,
+		 * various dependencies (e.g. Ack Vectors) can be added below.
+		 */
+		{
+			{ 0, 0, 0, 0 }
+		},
+		{
+			{ 0, 0, 0, 0 }
+		}
+	};
 	static const struct ccid_dependency ccid2_dependencies[2][2] = {
 		/*
 		 * CCID2 mandates Ack Vectors (RFC 4341, 4.): as CCID is a TX
@@ -934,6 +947,8 @@ static const struct ccid_dependency *dccp_feat_ccid_deps(u8 ccid, bool is_local)
 		}
 	};
 	switch (ccid) {
+	case DCCPC_CCID_ZERO:
+		return ccid0_dependencies[is_local];
 	case DCCPC_CCID2:
 		return ccid2_dependencies[is_local];
 	case DCCPC_CCID3:

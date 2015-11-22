@@ -72,4 +72,16 @@ config IP_DCCP_TFRC_LIB
 config IP_DCCP_TFRC_DEBUG
 	def_bool y if IP_DCCP_CCID3_DEBUG
 endif
+
+config IP_DCCP_CCID0
+	bool "CCID-ZERO (UDP-like) sample kernel module"
+	def_bool n
+	---help---
+	  This is a sample kernel module to illustrate the integration of new
+	  CCID plugin modules into DCCP. It can also be used for performance
+	  testing, but is not meant for deployment since it operates without
+	  any congestion control. It is a no-op CCID, its identifier is 248.
+
+	  Say N.
+
 endmenu

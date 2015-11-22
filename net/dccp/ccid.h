@@ -91,6 +91,9 @@ struct ccid_operations {
 						 int __user *optlen);
 };
 
+#ifdef CONFIG_IP_DCCP_CCID0
+extern struct ccid_operations ccid0_ops;
+#endif
 extern struct ccid_operations ccid2_ops;
 #ifdef CONFIG_IP_DCCP_CCID3
 extern struct ccid_operations ccid3_ops;

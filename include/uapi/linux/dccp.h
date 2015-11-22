@@ -177,6 +177,13 @@ enum {
 enum {
 	DCCPC_CCID2 = 2,
 	DCCPC_CCID3 = 3,
+	/*
+	 * CCIDs 248-255 below are permanently reserved for
+	 * experimental and testing use (RFC 4340, 19.5).
+	 */
+#define DCCPC_TESTING_MIN	248
+#define DCCPC_TESTING_MAX	255
+	DCCPC_CCID_ZERO = DCCPC_TESTING_MIN,
 };
 
 /* DCCP features (RFC 4340 section 6.4) */

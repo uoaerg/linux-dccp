@@ -571,8 +571,8 @@ static void ccid3_hc_rx_send_feedback(struct sock *sk,
 			 * would bring X down to s/t_mbi. That is why we return
 			 * X_recv according to rfc3448bis-06 for the moment.
 			 */
-			u32 rtt = hc->rx_rtt ? : DCCP_FALLBACK_RTT,
-			    s	= tfrc_rx_hist_packet_size(&hc->rx_hist);
+			u32 s = tfrc_rx_hist_packet_size(&hc->rx_hist),
+			    rtt = tfrc_rx_hist_rtt(&hc->rx_hist);
 
 			hc->rx_x_recv = scaled_div32(s, 2 * rtt);
 			break;
@@ -591,6 +591,11 @@ static void ccid3_hc_rx_send_feedback(struct sock *sk,
 			break;
 		/* fall through */
 	case CCID3_FBACK_PERIODIC:
+		/*
+		 * FIXME: check if delta is less than or equal to 1 RTT using
+		 * the receiver RTT sample. This is described in Errata 610/611
+		 * of RFC 4342 which reference section 6.2 of RFC 3448.
+		 */
 		delta = ktime_us_delta(now, hc->rx_tstamp_last_feedback);
 		if (delta <= 0)
 			DCCP_BUG("delta (%ld) <= 0", (long)delta);
@@ -649,8 +654,8 @@ static int ccid3_hc_rx_insert_options(struct sock *sk, struct sk_buff *skb)
 static u32 ccid3_first_li(struct sock *sk)
 {
 	struct ccid3_hc_rx_sock *hc = ccid3_hc_rx_sk(sk);
-	u32 x_recv, p, delta,
-	    s = tfrc_rx_hist_packet_size(&hc->rx_hist);
+	u32 s = tfrc_rx_hist_packet_size(&hc->rx_hist),
+	    rtt = tfrc_rx_hist_rtt(&hc->rx_hist), x_recv, p, delta;
 	u64 fval;
 
 	/*
@@ -660,11 +665,6 @@ static u32 ccid3_first_li(struct sock *sk)
 	 */
 	if (unlikely(hc->rx_feedback == CCID3_FBACK_NONE))
 		return 5;
-
-	if (hc->rx_rtt == 0) {
-		DCCP_WARN("No RTT estimate available, using fallback RTT\n");
-		hc->rx_rtt = DCCP_FALLBACK_RTT;
-	}
 
 	delta  = ktime_to_us(net_timedelta(hc->rx_tstamp_last_feedback));
 	x_recv = scaled_div32(hc->rx_hist.bytes_recvd, delta);
@@ -677,7 +677,7 @@ static u32 ccid3_first_li(struct sock *sk)
 		x_recv = hc->rx_x_recv;
 	}
 
-	fval = scaled_div32(scaled_div(s, hc->rx_rtt), x_recv);
+	fval = scaled_div32(scaled_div(s, rtt), x_recv);
 	p = tfrc_calc_x_reverse_lookup(fval);
 
 	ccid3_pr_debug("%s(%p), receive rate=%u bytes/s, implied "
@@ -712,25 +712,10 @@ static void ccid3_hc_rx_packet_recv(struct sock *sk, struct sk_buff *skb)
 		return; /* done receiving */
 
 	/*
-	 * Handle data packets: RTT sampling and monitoring p
-	 */
-	if (unlikely(!is_data_packet))
-		goto update_records;
-
-	if (!tfrc_lh_is_initialised(&hc->rx_li_hist)) {
-		const u32 sample = tfrc_rx_hist_sample_rtt(&hc->rx_hist, skb);
-		/*
-		 * Empty loss history: no loss so far, hence p stays 0.
-		 * Sample RTT values, since an RTT estimate is required for the
-		 * computation of p when the first loss occurs; RFC 3448, 6.3.1.
-		 */
-		if (sample != 0)
-			hc->rx_rtt = tfrc_ewma(hc->rx_rtt, sample, 9);
-	}
-	/*
 	 * Check if the periodic once-per-RTT feedback is due; RFC 4342, 10.3
 	 */
-	if (SUB16(dccp_hdr(skb)->dccph_ccval, hc->rx_last_counter) > 3)
+	if (is_data_packet &&
+	    SUB16(dccp_hdr(skb)->dccph_ccval, hc->rx_last_counter) > 3)
 		do_feedback = CCID3_FBACK_PERIODIC;
 
 update_records:
@@ -760,7 +745,7 @@ static void ccid3_hc_rx_exit(struct sock *sk)
 static void ccid3_hc_rx_get_info(struct sock *sk, struct tcp_info *info)
 {
 	info->tcpi_options  |= TCPI_OPT_TIMESTAMPS;
-	info->tcpi_rcv_rtt  = ccid3_hc_rx_sk(sk)->rx_rtt;
+	info->tcpi_rcv_rtt  = tfrc_rx_hist_rtt(&ccid3_hc_rx_sk(sk)->rx_hist);
 }
 
 static int ccid3_hc_rx_getsockopt(struct sock *sk, const int optname, int len,
@@ -775,7 +760,7 @@ static int ccid3_hc_rx_getsockopt(struct sock *sk, const int optname, int len,
 		if (len < sizeof(rx_info))
 			return -EINVAL;
 		rx_info.tfrcrx_x_recv = hc->rx_x_recv;
-		rx_info.tfrcrx_rtt    = hc->rx_rtt;
+		rx_info.tfrcrx_rtt    = tfrc_rx_hist_rtt(&hc->rx_hist);
 		rx_info.tfrcrx_p      = tfrc_invert_loss_event_rate(hc->rx_pinv);
 		len = sizeof(rx_info);
 		val = &rx_info;

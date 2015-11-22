@@ -124,7 +124,6 @@ enum ccid3_fback_type {
  * @rx_last_counter:	     Tracks window counter (RFC 4342, 8.1)
  * @rx_feedback:	     The type of the feedback last sent
  * @rx_x_recv:		     Receiver estimate of send rate (RFC 3448, sec. 4.3)
- * @rx_rtt:		     Receiver estimate of RTT
  * @rx_tstamp_last_feedback: Time at which last feedback was sent
  * @rx_hist:		     Packet history (loss detection + RTT sampling)
  * @rx_li_hist:		     Loss Interval database
@@ -134,7 +133,6 @@ struct ccid3_hc_rx_sock {
 	u8				rx_last_counter:4;
 	enum ccid3_fback_type		rx_feedback:4;
 	u32				rx_x_recv;
-	u32				rx_rtt;
 	ktime_t				rx_tstamp_last_feedback;
 	struct tfrc_rx_hist		rx_hist;
 	struct tfrc_loss_hist		rx_li_hist;

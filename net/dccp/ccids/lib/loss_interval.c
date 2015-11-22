@@ -198,9 +198,21 @@ bool tfrc_lh_interval_add(struct tfrc_loss_hist *lh, struct tfrc_rx_hist *rh,
 	cur->li_ccval	  = cong_evt->tfrchrx_ccval;
 	cur->li_is_closed = false;
 
-	if (++lh->counter == 1)
+	if (++lh->counter == 1) {
 		lh->i_mean = cur->li_length = (*calc_first_li)(sk);
-	else {
+		cur->li_is_closed = true;
+		cur = tfrc_lh_demand_next(lh);
+		if (unlikely(cur == NULL)) {
+			DCCP_CRIT("Cannot allocate/add loss record.");
+			return false;
+		}
+		++lh->counter;
+		cur->li_seqno	  = cong_evt_seqno;
+		cur->li_ccval	  = cong_evt->tfrchrx_ccval;
+		cur->li_is_closed = false;
+		cur->li_length    = dccp_delta_seqno(cur->li_seqno,
+				 tfrc_rx_hist_last_rcv(rh)->tfrchrx_seqno) + 1;
+	} else {
 		/* RFC 5348, 5.3: length of the open loss interval I_0 */
 		cur->li_length = dccp_delta_seqno(cur->li_seqno,
 				 tfrc_rx_hist_last_rcv(rh)->tfrchrx_seqno) + 1;

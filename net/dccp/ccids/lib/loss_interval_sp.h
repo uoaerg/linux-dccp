@@ -29,13 +29,15 @@
  *  @li_seqno:		Highest received seqno before the start of loss
  *  @li_ccval:		The CCVal belonging to @li_seqno
  *  @li_is_closed:	Whether @li_seqno is older than 1 RTT
+ *  @li_is_short:	Whether this interval is no longer that 2 RTT
  *  @li_length:		Loss interval sequence length
  *  @li_losses:        Number of losses counted on this interval
  */
 struct tfrc_loss_interval {
 	u64		 li_seqno:48,
 			 li_ccval:4,
-			 li_is_closed:1;
+			 li_is_closed:1,
+			 li_is_short:1;
 	u32		 li_length;
 	u32              li_losses;
 };

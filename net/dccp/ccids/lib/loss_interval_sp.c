@@ -36,6 +36,27 @@ static inline u32 tfrc_lh_get_interval(struct tfrc_loss_hist *lh, const u8 i)
 	return lh->ring[LIH_INDEX(lh->counter - i - 1)]->li_length;
 }
 
+static inline u32
+tfrc_lh_loss_interval_losses(struct tfrc_loss_hist *lh, const u8 i)
+{
+	BUG_ON(i >= lh->counter);
+	return lh->ring[LIH_INDEX(lh->counter - i - 1)]->li_losses;
+}
+
+static inline u8
+tfrc_lh_interval_is_short(struct tfrc_loss_hist *lh, const u8 i)
+{
+	BUG_ON(i >= lh->counter);
+	return lh->ring[LIH_INDEX(lh->counter - i - 1)]->li_is_short;
+}
+
+static inline u8
+tfrc_lh_loss_interval_ccval(struct tfrc_loss_hist *lh, const u8 i)
+{
+	BUG_ON(i >= lh->counter);
+	return lh->ring[LIH_INDEX(lh->counter - i - 1)]->li_ccval;
+}
+
 /*
  *	On-demand allocation and de-allocation of entries
  */
@@ -61,16 +82,25 @@ void tfrc_sp_lh_cleanup(struct tfrc_loss_hist *lh)
 		}
 }
 
-static void tfrc_sp_lh_calc_i_mean(struct tfrc_loss_hist *lh)
+static void tfrc_sp_lh_calc_i_mean(struct tfrc_loss_hist *lh, __u8 curr_ccval)
 {
 	u32 i_i, i_tot0 = 0, i_tot1 = 0, w_tot = 0;
 	int i, k = tfrc_lh_length(lh) - 1; /* k is as in rfc3448bis, 5.4 */
+	u32 losses;
 
 	if (k <= 0)
 		return;
 
 	for (i = 0; i <= k; i++) {
 		i_i = tfrc_lh_get_interval(lh, i);
+
+		if (tfrc_lh_interval_is_short(lh, i)) {
+
+			losses = tfrc_lh_loss_interval_losses(lh, i);
+
+			if (losses > 0)
+				i_i = DIV_ROUND_UP(i_i, losses);
+		}
 
 		if (i < k) {
 			i_tot0 += i_i * tfrc_lh_weights[i];
@@ -81,6 +111,11 @@ static void tfrc_sp_lh_calc_i_mean(struct tfrc_loss_hist *lh)
 	}
 
 	lh->i_mean = max(i_tot0, i_tot1) / w_tot;
+	BUG_ON(w_tot == 0);
+	if (SUB16(curr_ccval, tfrc_lh_loss_interval_ccval(lh, 0) > 8))
+		lh->i_mean = max(i_tot0, i_tot1) / w_tot;
+	else
+		lh->i_mean = i_tot1 / w_tot;
 }
 
 /**
@@ -121,7 +156,7 @@ void tfrc_sp_lh_update_i_mean(struct tfrc_loss_hist *lh, struct sk_buff *skb)
 		return;
 
 	cur->li_length = len;
-	tfrc_sp_lh_calc_i_mean(lh);
+	tfrc_sp_lh_calc_i_mean(lh, dccp_hdr(skb)->dccph_ccval);
 }
 
 /* RFC 4342, 10.2: test for the existence of packet with sequence number S */
@@ -191,6 +226,9 @@ bool tfrc_sp_lh_interval_add(struct tfrc_loss_hist *lh,
 
 		/* RFC 5348, 5.3: length between subsequent intervals */
 		cur->li_length = len;
+
+		if (SUB16(cong_evt->tfrchrx_ccval, cur->li_ccval) <= 8)
+			cur->li_is_short = 1;
 	}
 
 	/* Make the new interval the current one */
@@ -203,6 +241,7 @@ bool tfrc_sp_lh_interval_add(struct tfrc_loss_hist *lh,
 	cur->li_seqno	  = cong_evt_seqno;
 	cur->li_ccval	  = cong_evt->tfrchrx_ccval;
 	cur->li_is_closed = false;
+	cur->li_is_short  = 0;
 
 	cur->li_losses = rh->num_losses;
 	rh->num_losses = 0;
@@ -217,7 +256,7 @@ bool tfrc_sp_lh_interval_add(struct tfrc_loss_hist *lh,
 		if (lh->counter > (2*LIH_SIZE))
 			lh->counter -= LIH_SIZE;
 
-		tfrc_sp_lh_calc_i_mean(lh);
+		tfrc_sp_lh_calc_i_mean(lh, cong_evt->tfrchrx_ccval);
 	}
 	return true;
 }

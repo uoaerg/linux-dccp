@@ -55,7 +55,7 @@ static int dccp_transmit_skb(struct sock *sk, struct sk_buff *skb)
 		const u32 dccp_header_size = sizeof(*dh) +
 					     sizeof(struct dccp_hdr_ext) +
 					  dccp_packet_hdr_len(dcb->dccpd_type);
-		int err, set_ack = 1;
+		int err, set_ack = 1, ecn_bits = INET_ECN_ECT_0;
 		u64 ackno = dp->dccps_gsr;
 		/*
 		 * Increment GSS here already in case the option code needs it.
@@ -68,6 +68,8 @@ static int dccp_transmit_skb(struct sock *sk, struct sk_buff *skb)
 			set_ack = 0;
 			/* fall through */
 		case DCCP_PKT_DATAACK:
+			/* ECN bits of Data/DataAck are set in dccp_sendmsg() */
+			ecn_bits = DCCP_SKB_CB(skb)->dccpd_ecn;
 		case DCCP_PKT_RESET:
 			break;
 
@@ -132,8 +134,10 @@ static int dccp_transmit_skb(struct sock *sk, struct sk_buff *skb)
 			break;
 		}
 
-		if (dp->dccps_r_ecn_ok)
-			INET_ECN_xmit(sk);
+		if (dp->dccps_r_ecn_ok) {
+			inet_sk(sk)->tos &= ~INET_ECN_MASK;
+			inet_sk(sk)->tos |= ecn_bits & INET_ECN_MASK;
+		}
 
 		icsk->icsk_af_ops->send_check(sk, skb);
 

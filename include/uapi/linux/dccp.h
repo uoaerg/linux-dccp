@@ -202,6 +202,7 @@ enum dccp_cmsg_type {
 	DCCP_SCM_PRIORITY = 1,
 	DCCP_SCM_QPOLICY_MAX = 0xFFFF,
 	/* ^-- Up to here reserved exclusively for qpolicy parameters */
+	DCCP_SCM_ECN_BITS,
 	DCCP_SCM_MAX
 };
 

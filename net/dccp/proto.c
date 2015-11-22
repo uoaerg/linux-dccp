@@ -709,7 +709,17 @@ EXPORT_SYMBOL_GPL(compat_dccp_getsockopt);
 
 static int dccp_msghdr_parse(struct msghdr *msg, struct sk_buff *skb)
 {
+	const struct dccp_sock *dp = dccp_sk(skb->sk);
 	struct cmsghdr *cmsg;
+	u8 val;
+
+	/*
+	 * Setting ECN bits via DCCP_SCM_ECN_BITS: Data/DataAck only.
+	 * See dccp_transmit_skb() where further processing takes place.
+	 * By default, when no cmsg bits are supplied and when ECN is not
+	 * disabled, ECT(0) is used for all outgoing packets (RFC 3168, 5.).
+	 */
+	DCCP_SKB_CB(skb)->dccpd_ecn = INET_ECN_ECT_0;
 
 	/*
 	 * Assign an (opaque) qpolicy priority value to skb->priority.
@@ -739,6 +749,16 @@ static int dccp_msghdr_parse(struct msghdr *msg, struct sk_buff *skb)
 			if (cmsg->cmsg_len != CMSG_LEN(sizeof(__u32)))
 				return -EINVAL;
 			skb->priority = *(__u32 *)CMSG_DATA(cmsg);
+			break;
+		case DCCP_SCM_ECN_BITS:
+			if (!dp->dccps_r_ecn_ok)
+				return -EINVAL;
+			if (cmsg->cmsg_len != CMSG_LEN(sizeof(__u8)))
+				return -EINVAL;
+			val = *(__u8 *)CMSG_DATA(cmsg);
+			if (val > INET_ECN_MASK)
+				return -EINVAL;
+			DCCP_SKB_CB(skb)->dccpd_ecn = val;
 			break;
 		default:
 			return -EINVAL;

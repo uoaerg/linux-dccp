@@ -35,8 +35,16 @@ is at http://www.ietf.org/html.charters/dccp-charter.html
 ECN Support
 ===========
 By default, all outgoing packets are sent with ECT(0) as per RFC 3168, sec. 5.
-This can be disabled by setting the `ecn_local' sysctl to 0 (see below). The
-ECN Nonce (RFC 3540) is not supported.
+This can be disabled by setting the `ecn_local' sysctl to 0 (see below).
+
+For Data/DataAck packets, the ECN bits can be modified by passing an appropriate
+cmsg(3) value as ancillary data to sendmsg(2). The argument is an uint8_t value
+between 0..3 (corresponding to Not-ECT, ECT(1), ECT(0), and CE). Values greater
+than 3 are not accepted. Values need to be wrapped into a cmsg(3) header:
+	cmsg->cmsg_level = SOL_DCCP;
+	cmsg->cmsg_type	 = DCCP_SCM_ECN_BITS;
+	cmsg->cmsg_len	 = CMSG_LEN(sizeof(uint8_t));	/* or CMSG_LEN(1) */
+
 
 Missing features
 ================

@@ -28,6 +28,7 @@
 #include <net/ip.h>
 #include <net/icmp.h>
 #include <net/tcp_states.h>
+#include <net/inet_ecn.h>
 #include <linux/udp.h>
 #include <linux/igmp.h>
 #include <linux/netfilter.h>
@@ -743,7 +744,7 @@ static int do_ip_setsockopt(struct sock *sk, int level,
 			inet->cmsg_flags &= ~IP_CMSG_RECVFRAGSIZE;
 		break;
 	case IP_TOS:	/* This sets both TOS and Precedence */
-		if (sk->sk_type == SOCK_STREAM) {
+		if (sk->sk_type != SOCK_RAW) {
 			val &= ~INET_ECN_MASK;
 			val |= inet->tos & INET_ECN_MASK;
 		}

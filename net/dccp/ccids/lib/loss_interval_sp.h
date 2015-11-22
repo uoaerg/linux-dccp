@@ -170,6 +170,8 @@ u32 tfrc_sp_p_from_loss_intervals_opt(struct tfrc_tx_li_data *li_data,
 				      u8 curr_ccval, u64 seqno);
 void tfrc_sp_parse_dropped_packets_opt(struct tfrc_tx_li_data *li_data,
 				       u8 *optval, u8 optlen);
+void tfrc_sp_parse_loss_intervals_opt(struct tfrc_tx_li_data *li_data,
+				      u8 *optval, u8 optlen);
 void tfrc_sp_tx_ld_cleanup(struct tfrc_ecn_echo_sum_entry **);
 
 #endif	/* _DCCP_LI_HIST_SP_ */

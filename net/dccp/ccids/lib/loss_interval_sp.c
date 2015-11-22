@@ -550,6 +550,46 @@ void tfrc_sp_parse_dropped_packets_opt(struct tfrc_tx_li_data *li_data,
 	li_data->dropped_packets_data[0] = optlen/3;
 }
 
+/*
+ * tfrc_sp_parse_loss_intervals_opt  -  parses loss interval option
+ * li_data:		used to store parsed data
+ * optval:		option data
+ * optlen:		option length
+ */
+void tfrc_sp_parse_loss_intervals_opt(struct tfrc_tx_li_data *li_data,
+				      u8 *optval, u8 optlen)
+{
+	u8 pos;
+	u32 length;
+
+	if ((optlen%9) != 1) {
+		li_data->loss_interval_data[0] = 0;
+		return;
+	}
+
+	pos = 1;
+	optval++;
+
+	while (pos < optlen) {
+		length = ntohl(((*((u32 *)optval)) & 0xFFFFFF00) >> 8);
+		pos += 3;
+		optval += 3;
+
+		length += ntohl(((*((u32 *)optval))&0x7FFFFF00) >> 8);
+		pos += 6;
+		optval += 6;
+
+		li_data->loss_interval_data[(pos-1)%9] = length;
+
+		if ((pos/9) == 9) {
+			li_data->loss_interval_data[0] = 9;
+			return;
+		}
+	}
+
+	li_data->loss_interval_data[0] = (optlen-1)/9;
+}
+
 static void tfrc_sp_lh_calc_i_mean(struct tfrc_loss_hist *lh, __u8 curr_ccval)
 {
 	u32 i_i, i_tot0 = 0, i_tot1 = 0, w_tot = 0;

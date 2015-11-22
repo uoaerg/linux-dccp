@@ -47,6 +47,8 @@ static bool ccid3_debug;
 /*
  *	Transmitter Half-Connection Routines
  */
+/* Oscillation Prevention/Reduction: recommended by rfc3448bis, on by default */
+static bool ccid3_osc_prev = true;
 
 /*
  * Compute the initial sending rate X_init in the manner of RFC 3390:
@@ -297,6 +299,9 @@ static int ccid3_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
 		hc->tx_s = ccid3_hc_tx_measure_packet_size(sk, skb->len);
 		ccid3_update_send_interval(hc);
 
+		/* Seed value for Oscillation Prevention (sec. 4.5) */
+		hc->tx_r_sqmean = tfrc_scaled_sqrt(hc->tx_rtt);
+
 	} else {
 		delay = ktime_us_delta(hc->tx_t_nom, now);
 		ccid3_pr_debug("delay=%ld\n", (long)delay);
@@ -414,6 +419,38 @@ done_computing_x:
 			       hc->tx_s, hc->tx_p, hc->tx_x_calc,
 			       (unsigned int)(hc->tx_x_recv >> 6),
 			       (unsigned int)(hc->tx_x >> 6));
+	/*
+	 * Oscillation Reduction (RFC 3448, 4.5) - modifying t_ipi according to
+	 * RTT changes, multiplying by X/X_inst = sqrt(R_sample)/R_sqmean. This
+	 * can be useful if few connections share a link, avoiding that buffer
+	 * fill levels (RTT) oscillate as a result of frequent adjustments to X.
+	 * A useful presentation with background information is in
+	 *    Joerg Widmer, "Equation-Based Congestion Control",
+	 *    MSc Thesis, University of Mannheim, Germany, 2000
+	 * (sec. 3.6.4), who calls this ISM ("Inter-packet Space Modulation").
+	 */
+	if (ccid3_osc_prev) {
+		r_sample = tfrc_scaled_sqrt(r_sample);
+		/*
+		 * The modulation can work in both ways: increase/decrease t_ipi
+		 * according to long-term increases/decreases of the RTT. The
+		 * former is a useful measure, since it works against queue
+		 * build-up. The latter temporarily increases the sending rate,
+		 * so that buffers fill up more quickly. This in turn causes
+		 * the RTT to increase, so that either later reduction becomes
+		 * necessary or the RTT stays at a very high level. Decreasing
+		 * t_ipi is therefore not supported.
+		 * Furthermore, during the initial slow-start phase the RTT
+		 * naturally increases, where using the algorithm would cause
+		 * delays. Hence it is disabled during the initial slow-start.
+		 */
+		if (r_sample > hc->tx_r_sqmean && hc->tx_p > 0)
+			hc->tx_t_ipi = div_u64((u64)hc->tx_t_ipi * (u64)r_sample,
+					       hc->tx_r_sqmean);
+		hc->tx_t_ipi = min_t(u32, hc->tx_t_ipi, TFRC_T_MBI);
+		/* update R_sqmean _after_ computing the modulation factor */
+		hc->tx_r_sqmean = tfrc_ewma(hc->tx_r_sqmean, r_sample, 9);
+	}
 
 	/* unschedule no feedback timer */
 	sk_stop_timer(sk, &hc->tx_no_feedback_timer);
@@ -763,6 +800,9 @@ struct ccid_operations ccid3_ops = {
 	.ccid_hc_rx_getsockopt	   = ccid3_hc_rx_getsockopt,
 	.ccid_hc_tx_getsockopt	   = ccid3_hc_tx_getsockopt,
 };
+
+module_param(ccid3_osc_prev, bool, 0644);
+MODULE_PARM_DESC(ccid3_osc_prev, "Use Oscillation Prevention (RFC 3448, 4.5)");
 
 #ifdef CONFIG_IP_DCCP_CCID3_DEBUG
 module_param(ccid3_debug, bool, 0644);

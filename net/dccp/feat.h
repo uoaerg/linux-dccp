@@ -106,6 +106,7 @@ struct ccid_dependency {
 extern unsigned long sysctl_dccp_sequence_window;
 extern int	     sysctl_dccp_rx_ccid;
 extern int	     sysctl_dccp_tx_ccid;
+extern int	     sysctl_dccp_ecn_local;
 
 int dccp_feat_init(struct sock *sk);
 void dccp_feat_initialise_sysctls(void);

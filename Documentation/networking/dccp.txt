@@ -32,6 +32,12 @@ DCCP is a Proposed Standard (RFC 2026), and the homepage for DCCP as a protocol
 is at http://www.ietf.org/html.charters/dccp-charter.html
 
 
+ECN Support
+===========
+By default, all outgoing packets are sent with ECT(0) as per RFC 3168, sec. 5.
+This can be disabled by setting the `ecn_local' sysctl to 0 (see below). The
+ECN Nonce (RFC 3540) is not supported.
+
 Missing features
 ================
 The Linux DCCP implementation does not currently support all the features that are
@@ -168,6 +174,12 @@ seq_window = 100
 	The initial sequence window (sec. 7.5.2) of the sender. This influences
 	the local ackno validity and the remote seqno validity windows (7.5.1).
 	Values in the range Wmin = 32 (RFC 4340, 7.5.2) up to 2^32-1 can be set.
+
+ecn_local = 1
+	This toggles local ECN support: when set to 0, ECN Incapable (sec. 12.1)
+	is sent and ECN bits of incoming packets are ignored. Note that this is
+	different from tcp_ecn: to disable sending of ECT codepoints, the remote
+	peer needs to set this sysctl to zero.
 
 tx_qlen = 5
 	The size of the transmit buffer in packets. A value of 0 corresponds

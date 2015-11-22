@@ -81,6 +81,14 @@ static struct ctl_table dccp_default_table[] = {
 		.extra2		= &u8_max,
 	},
 	{
+		.procname	= "ecn_local",
+		.data		= &sysctl_dccp_ecn_local,
+		.maxlen		= sizeof(sysctl_dccp_ecn_local),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+	},
+	{
 		.procname	= "tx_qlen",
 		.data		= &sysctl_dccp_tx_qlen,
 		.maxlen		= sizeof(sysctl_dccp_tx_qlen),

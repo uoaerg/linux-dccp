@@ -30,7 +30,8 @@
 /* feature-specific sysctls - initialised to the defaults from RFC 4340, 6.4 */
 unsigned long	sysctl_dccp_sequence_window __read_mostly = 100;
 int		sysctl_dccp_rx_ccid	    __read_mostly = 2,
-		sysctl_dccp_tx_ccid	    __read_mostly = 2;
+		sysctl_dccp_tx_ccid	    __read_mostly = 2,
+		sysctl_dccp_ecn_local	    __read_mostly = true;
 
 /*
  * Feature activation handlers.
@@ -1132,7 +1133,8 @@ static u8 dccp_feat_change_recv(struct list_head *fn, u8 is_mandatory, u8 opt,
 		 * No particular preferences have been registered. We deal with
 		 * this situation by assuming that all valid values are equally
 		 * acceptable, and apply the following checks:
-		 * - if the peer's list is a singleton, we accept a valid value;
+		 * - if the peer's list is a singleton, we accept a valid value
+		 *   (allows to cope gracefully with e.g. remote ECN Incapable);
 		 * - if we are the server, we first try to see if the peer (the
 		 *   client) advertises the default value. If yes, we use it,
 		 *   otherwise we accept the preferred value;
@@ -1459,11 +1461,18 @@ int dccp_feat_init(struct sock *sk)
 	rc = __feat_register_sp(fn, DCCPF_SHORT_SEQNOS, true, true, &off, 1);
 	if (rc)
 		return rc;
-
-	/* RFC 4340 12.1: "If a DCCP is not ECN capable, ..." */
-	rc = __feat_register_sp(fn, DCCPF_ECN_INCAPABLE, true, true, &on, 1);
-	if (rc)
-		return rc;
+	/*
+	 * ECN Incapable Feature (RFC 4340, 12.1)
+	 *
+	 * We do not register preferences for the feature-remote value, so that
+	 * the preference list is empty and either value is locally acceptable.
+	 */
+	if (!sysctl_dccp_ecn_local) {
+		rc = __feat_register_sp(fn, DCCPF_ECN_INCAPABLE,
+					    true, true, &on, 1);
+		if (rc)
+			return rc;
+	}
 
 	/*
 	 * We advertise the available list of CCIDs and reorder according to

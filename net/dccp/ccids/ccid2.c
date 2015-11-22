@@ -344,6 +344,19 @@ static void ccid2_hc_tx_packet_sent(struct sock *sk, unsigned int len)
 #endif
 }
 
+static size_t ccid2_hc_tx_probe(struct sock *sk, char *buf, const size_t maxlen)
+{
+	struct ccid2_hc_tx_sock *hc = ccid2_hc_tx_sk(sk);
+
+	/* Specific field numbering:
+			5     6    7      8        9      10     11
+			rto   rtt  mdev   rttvar   cwnd   pipe   ssthresh  */
+	return snprintf(buf, maxlen, " %u %u %u %u %u %u %u", hc->tx_rto,
+			hc->tx_srtt >> 3, hc->tx_mdev >> 2, hc->tx_rttvar >> 2,
+			hc->tx_cwnd, hc->tx_pipe, hc->tx_ssthresh);
+
+}
+
 /**
  * ccid2_rtt_estimator - Sample RTT and compute RTO using RFC2988 algorithm
  * This code is almost identical with TCP's tcp_rtt_estimator(), since
@@ -773,6 +786,7 @@ struct ccid_operations ccid2_ops = {
 	.ccid_hc_tx_exit	  = ccid2_hc_tx_exit,
 	.ccid_hc_tx_send_packet	  = ccid2_hc_tx_send_packet,
 	.ccid_hc_tx_packet_sent	  = ccid2_hc_tx_packet_sent,
+	.ccid_hc_tx_probe	  = ccid2_hc_tx_probe,
 	.ccid_hc_tx_parse_options = ccid2_hc_tx_parse_options,
 	.ccid_hc_tx_packet_recv	  = ccid2_hc_tx_packet_recv,
 	.ccid_hc_rx_obj_size	  = sizeof(struct ccid2_hc_rx_sock),

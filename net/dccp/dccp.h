@@ -383,6 +383,16 @@ static inline bool dccp_skb_is_ecn_ce(const struct sk_buff *skb)
 	return (DCCP_SKB_CB(skb)->dccpd_ecn & INET_ECN_MASK) == INET_ECN_CE;
 }
 
+static inline bool dccp_skb_is_ecn_ect0(const struct sk_buff *skb)
+{
+	return (DCCP_SKB_CB(skb)->dccpd_ecn & INET_ECN_MASK) == INET_ECN_ECT_0;
+}
+
+static inline bool dccp_skb_is_ecn_ect1(const struct sk_buff *skb)
+{
+	return (DCCP_SKB_CB(skb)->dccpd_ecn & INET_ECN_MASK) == INET_ECN_ECT_1;
+}
+
 /* RFC 4340, sec. 7.7 */
 static inline int dccp_non_data_packet(const struct sk_buff *skb)
 {

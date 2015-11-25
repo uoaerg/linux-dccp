@@ -355,11 +355,12 @@ static void __three_after_loss(struct tfrc_rx_hist *h)
  */
 bool tfrc_sp_rx_congestion_event(struct tfrc_rx_hist *h,
 				 struct tfrc_loss_hist *lh,
+				 struct tfrc_loss_data *ld,
 				 struct sk_buff *skb, const u64 ndp,
 				 u32 (*first_li)(struct sock *),
 				 struct sock *sk)
 {
-	bool new_event = false;
+	bool new_loss = false, new_event = false;
 
 	if (tfrc_sp_rx_hist_duplicate(h, skb))
 		return 0;
@@ -376,6 +377,7 @@ bool tfrc_sp_rx_congestion_event(struct tfrc_rx_hist *h,
 		/*
 		 * Update Loss Interval database and recycle RX records
 		 */
+		new_loss = true;
 		new_event = tfrc_sp_lh_interval_add(lh, h, first_li, sk);
 		__three_after_loss(h);
 
@@ -400,6 +402,11 @@ bool tfrc_sp_rx_congestion_event(struct tfrc_rx_hist *h,
 			tfrc_rx_hist_resume_rtt_sampling(h);
 		}
 	}
+
+	/*
+	 * Update Loss Interval data used for options
+	 */
+	tfrc_sp_update_li_data(ld, h, skb, new_loss, new_event);
 
 	/*
 	 * Update moving-average of `s' and the sum of received payload bytes.

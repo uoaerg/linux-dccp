@@ -129,6 +129,7 @@ enum tfrc_fback_type {
  * @rx_hist:		     Packet history (loss detection + RTT sampling)
  * @rx_li_hist:		     Loss Interval database
  * @rx_pinv:		     Inverse of Loss Event Rate (RFC 4342, sec. 8.5)
+ * @rx_li_data:		     Loss Interval data for options
  */
 struct tfrc_hc_rx_sock {
 	u8				rx_last_counter:4;
@@ -138,6 +139,7 @@ struct tfrc_hc_rx_sock {
 	struct tfrc_rx_hist		rx_hist;
 	struct tfrc_loss_hist		rx_li_hist;
 #define rx_pinv				rx_li_hist.i_mean
+	struct tfrc_loss_data		rx_li_data;
 };
 
 static inline struct tfrc_hc_rx_sock *tfrc_hc_rx_sk(const struct sock *sk)

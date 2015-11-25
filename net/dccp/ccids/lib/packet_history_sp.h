@@ -200,6 +200,7 @@ int  tfrc_sp_rx_hist_duplicate(struct tfrc_rx_hist *h, struct sk_buff *skb);
 
 bool tfrc_sp_rx_congestion_event(struct tfrc_rx_hist *h,
 				 struct tfrc_loss_hist *lh,
+				 struct tfrc_loss_data *ld,
 				 struct sk_buff *skb, const u64 ndp,
 				 u32 (*first_li)(struct sock *sk),
 				 struct sock *sk);

@@ -14,6 +14,7 @@
 #include "tfrc_sp.h"
 
 static struct kmem_cache  *tfrc_lh_slab  __read_mostly;
+static struct kmem_cache  *tfrc_ld_slab  __read_mostly;
 /* Loss Interval weights from [RFC 3448, 5.4], scaled by 10 */
 static const int tfrc_lh_weights[NINTERVAL] = { 10, 10, 10, 10, 8, 6, 4, 2 };
 
@@ -80,6 +81,230 @@ void tfrc_sp_lh_cleanup(struct tfrc_loss_hist *lh)
 					lh->ring[LIH_INDEX(lh->counter)]);
 			lh->ring[LIH_INDEX(lh->counter)] = NULL;
 		}
+}
+
+/*
+ * Allocation routine for new entries of loss interval data
+ */
+static struct tfrc_loss_data_entry *tfrc_ld_add_new(struct tfrc_loss_data *ld)
+{
+       struct tfrc_loss_data_entry *new =
+			kmem_cache_alloc(tfrc_ld_slab, GFP_ATOMIC);
+
+	if (new == NULL)
+		return NULL;
+
+	memset(new, 0, sizeof(struct tfrc_loss_data_entry));
+
+	new->next = ld->head;
+	ld->head = new;
+	ld->counter++;
+
+	return new;
+}
+
+void tfrc_sp_ld_cleanup(struct tfrc_loss_data *ld)
+{
+	struct tfrc_loss_data_entry *next, *h = ld->head;
+
+	while (h) {
+		next = h->next;
+		kmem_cache_free(tfrc_ld_slab, h);
+		h = next;
+	}
+
+	ld->head = NULL;
+	ld->counter = 0;
+}
+
+/*
+ *  tfrc_sp_ld_prepare_data  -  updates arrays on tfrc_loss_data
+ *                             so they can be sent as options
+ *  @loss_count:       current loss count (packets after hole on transmission),
+ *                     used to determine skip length for loss intervals option
+ *  @ld:               loss intervals data being updated
+ */
+void tfrc_sp_ld_prepare_data(u8 loss_count, struct tfrc_loss_data *ld)
+{
+	u8 *li_ofs, *d_ofs;
+	struct tfrc_loss_data_entry *e;
+	u16 count;
+
+	li_ofs = &ld->loss_intervals_opts[0];
+	d_ofs = &ld->drop_opts[0];
+
+	count = 0;
+	e = ld->head;
+
+	*li_ofs = loss_count + 1;
+	li_ofs++;
+
+	while (e != NULL) {
+
+		if (count < TFRC_LOSS_INTERVALS_OPT_MAX_LENGTH) {
+			*li_ofs = ((htonl(e->lossless_length) & 0xFFFFFF)<<8);
+			li_ofs += 3;
+			*li_ofs = ((e->ecn_nonce_sum&0x1) << 31) |
+				(htonl((e->loss_length & 0x7FFFFF))<<8);
+			li_ofs += 3;
+			*li_ofs = ((htonl(e->data_length) & 0xFFFFFF)<<8);
+			li_ofs += 3;
+		} else
+			break;
+
+		if (count < TFRC_DROP_OPT_MAX_LENGTH) {
+			*d_ofs = (htonl(e->drop_count) & 0xFFFFFF)<<8;
+			d_ofs += 3;
+		} else
+			break;
+
+		count++;
+		e = e->next;
+       }
+}
+
+/*
+ *  tfrc_sp_update_li_data  -  Update tfrc_loss_data upon
+ *			       packet receiving or loss detection
+ *  @ld:			tfrc_loss_data being updated
+ *  @rh:			loss event record
+ *  @skb:			received packet
+ *  @new_loss:			dictates if new loss was detected
+ *				upon receiving current packet
+ *  @new_event:			...and if the loss starts new loss interval
+ */
+void tfrc_sp_update_li_data(struct tfrc_loss_data *ld,
+			    struct tfrc_rx_hist *rh,
+			    struct sk_buff *skb,
+			    bool new_loss, bool new_event)
+{
+	struct tfrc_loss_data_entry *new, *h;
+
+	if (!dccp_data_packet(skb))
+		return;
+
+	if (ld->head == NULL) {
+		new = tfrc_ld_add_new(ld);
+		if (unlikely(new == NULL)) {
+			DCCP_CRIT("Cannot allocate new loss data registry.");
+			return;
+		}
+
+		if (new_loss) {
+			new->drop_count = rh->num_losses;
+			new->lossless_length = 1;
+			new->loss_length = rh->num_losses;
+
+			new->data_length = 1;
+
+			if (dccp_skb_is_ecn_ect1(skb))
+				new->ecn_nonce_sum = 1;
+			else
+				new->ecn_nonce_sum = 0;
+		} else {
+			new->drop_count = 0;
+			new->lossless_length = 1;
+			new->loss_length = 0;
+
+			new->data_length = 1;
+
+			if (dccp_skb_is_ecn_ect1(skb))
+				new->ecn_nonce_sum = 1;
+			else
+				new->ecn_nonce_sum = 0;
+		}
+
+		return;
+	}
+
+	if (new_event) {
+		new = tfrc_ld_add_new(ld);
+		if (unlikely(new == NULL)) {
+			DCCP_CRIT("Cannot allocate new loss data registry. \
+					Cleaning up.");
+			tfrc_sp_ld_cleanup(ld);
+			return;
+		}
+
+		new->drop_count = rh->num_losses;
+		new->lossless_length = (ld->last_loss_count - rh->loss_count);
+		new->loss_length = rh->num_losses;
+
+		new->ecn_nonce_sum = 0;
+		new->data_length = 0;
+
+		while (ld->last_loss_count > rh->loss_count) {
+			ld->last_loss_count--;
+
+			if (ld->sto_is_data & (1 << (ld->last_loss_count))) {
+				new->data_length++;
+
+				if (ld->sto_ecn & (1 << (ld->last_loss_count)))
+					new->ecn_nonce_sum =
+						!new->ecn_nonce_sum;
+			}
+		}
+
+		return;
+	}
+
+	h = ld->head;
+
+	if (rh->loss_count > ld->last_loss_count) {
+		ld->last_loss_count = rh->loss_count;
+
+		ld->sto_is_data |= (1 << (ld->last_loss_count - 1));
+
+		if (dccp_skb_is_ecn_ect1(skb))
+			ld->sto_ecn |= (1 << (ld->last_loss_count - 1));
+
+		return;
+	}
+
+	if (new_loss) {
+		h->drop_count += rh->num_losses;
+		h->lossless_length = (ld->last_loss_count - rh->loss_count);
+		h->loss_length += h->lossless_length + rh->num_losses;
+
+		h->ecn_nonce_sum = 0;
+		h->data_length = 0;
+
+		while (ld->last_loss_count > rh->loss_count) {
+			ld->last_loss_count--;
+
+			if (ld->sto_is_data&(1 << (ld->last_loss_count))) {
+				h->data_length++;
+
+				if (ld->sto_ecn & (1 << (ld->last_loss_count)))
+					h->ecn_nonce_sum = !h->ecn_nonce_sum;
+			}
+		}
+
+		return;
+	}
+
+	if (ld->last_loss_count > rh->loss_count) {
+		while (ld->last_loss_count > rh->loss_count) {
+			ld->last_loss_count--;
+
+			h->lossless_length++;
+
+			if (ld->sto_is_data & (1 << (ld->last_loss_count))) {
+				h->data_length++;
+
+				if (ld->sto_ecn & (1 << (ld->last_loss_count)))
+					h->ecn_nonce_sum = !h->ecn_nonce_sum;
+			}
+		}
+
+		return;
+	}
+
+	h->lossless_length++;
+	h->data_length++;
+
+	if (dccp_skb_is_ecn_ect1(skb))
+		h->ecn_nonce_sum = !h->ecn_nonce_sum;
 }
 
 static void tfrc_sp_lh_calc_i_mean(struct tfrc_loss_hist *lh, __u8 curr_ccval)
@@ -266,7 +491,24 @@ int __init tfrc_sp_li_init(void)
 	tfrc_lh_slab = kmem_cache_create("tfrc_sp_li_hist",
 					 sizeof(struct tfrc_loss_interval), 0,
 					 SLAB_HWCACHE_ALIGN, NULL);
-	return tfrc_lh_slab == NULL ? -ENOBUFS : 0;
+	tfrc_ld_slab = kmem_cache_create("tfrc_sp_li_data",
+					 sizeof(struct tfrc_loss_data_entry), 0,
+					 SLAB_HWCACHE_ALIGN, NULL);
+
+	if ((tfrc_lh_slab != NULL) && (tfrc_ld_slab != NULL))
+		return 0;
+
+	if (tfrc_lh_slab != NULL) {
+		kmem_cache_destroy(tfrc_lh_slab);
+		tfrc_lh_slab = NULL;
+	}
+
+	if (tfrc_ld_slab != NULL) {
+		kmem_cache_destroy(tfrc_ld_slab);
+		tfrc_ld_slab = NULL;
+	}
+
+	return -ENOBUFS;
 }
 
 void tfrc_sp_li_exit(void)
@@ -274,5 +516,10 @@ void tfrc_sp_li_exit(void)
 	if (tfrc_lh_slab != NULL) {
 		kmem_cache_destroy(tfrc_lh_slab);
 		tfrc_lh_slab = NULL;
+	}
+
+	if (tfrc_ld_slab != NULL) {
+		kmem_cache_destroy(tfrc_ld_slab);
+		tfrc_ld_slab = NULL;
 	}
 }

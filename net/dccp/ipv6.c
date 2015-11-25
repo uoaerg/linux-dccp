@@ -21,7 +21,6 @@
 #include <net/addrconf.h>
 #include <net/inet_common.h>
 #include <net/inet_hashtables.h>
-#include <net/inet_sock.h>
 #include <net/inet6_connection_sock.h>
 #include <net/inet6_hashtables.h>
 #include <net/ip6_route.h>
@@ -680,6 +679,7 @@ ipv6_pktoptions:
 
 static int dccp_v6_rcv(struct sk_buff *skb)
 {
+	struct dccp_skb_cb *dcb = DCCP_SKB_CB(skb);
 	const struct dccp_hdr *dh;
 	bool refcounted;
 	struct sock *sk;
@@ -690,6 +690,8 @@ static int dccp_v6_rcv(struct sk_buff *skb)
 	if (dccp_invalid_packet(skb))
 		goto discard_it;
 
+	dcb->dccpd_ecn = ipv6_get_dsfield(ipv6_hdr(skb)) & INET_ECN_MASK;
+
 	/* Step 1: If header checksum is incorrect, drop packet and return. */
 	if (dccp_v6_csum_finish(skb, &ipv6_hdr(skb)->saddr,
 				     &ipv6_hdr(skb)->daddr)) {
@@ -699,13 +701,13 @@ static int dccp_v6_rcv(struct sk_buff *skb)
 
 	dh = dccp_hdr(skb);
 
-	DCCP_SKB_CB(skb)->dccpd_seq  = dccp_hdr_seq(dh);
-	DCCP_SKB_CB(skb)->dccpd_type = dh->dccph_type;
+	dcb->dccpd_seq  = dccp_hdr_seq(dh);
+	dcb->dccpd_type = dh->dccph_type;
 
 	if (dccp_packet_without_ack(skb))
-		DCCP_SKB_CB(skb)->dccpd_ack_seq = DCCP_PKT_WITHOUT_ACK_SEQ;
+		dcb->dccpd_ack_seq = DCCP_PKT_WITHOUT_ACK_SEQ;
 	else
-		DCCP_SKB_CB(skb)->dccpd_ack_seq = dccp_hdr_ack_seq(skb);
+		dcb->dccpd_ack_seq = dccp_hdr_ack_seq(skb);
 
 lookup:
 	sk = __inet6_lookup_skb(&dccp_hashinfo, skb, __dccp_hdr_len(dh),
@@ -784,8 +786,7 @@ no_dccp_socket:
 	 *		Drop packet and return
 	 */
 	if (dh->dccph_type != DCCP_PKT_RESET) {
-		DCCP_SKB_CB(skb)->dccpd_reset_code =
-					DCCP_RESET_CODE_NO_CONNECTION;
+		dcb->dccpd_reset_code = DCCP_RESET_CODE_NO_CONNECTION;
 		dccp_v6_ctl_send_reset(sk, skb);
 	}
 

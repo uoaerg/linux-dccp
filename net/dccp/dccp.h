@@ -14,6 +14,7 @@
 
 #include <linux/dccp.h>
 #include <linux/ktime.h>
+#include <net/inet_ecn.h>
 #include <net/snmp.h>
 #include <net/sock.h>
 #include <net/tcp.h>
@@ -349,6 +350,7 @@ static inline bool dccp_bad_service_code(const struct sock *sk,
  * dccp_skb_cb  -  DCCP per-packet control information
  * @dccpd_type: one of %dccp_pkt_type (or unknown)
  * @dccpd_ccval: CCVal field (5.1), see e.g. RFC 4342, 8.1
+ * @dccpd_ecn: ECN bits read from the IPv4 TOS / IPv6 Traffic Class field
  * @dccpd_reset_code: one of %dccp_reset_codes
  * @dccpd_reset_data: Data1..3 fields (depend on @dccpd_reset_code)
  * @dccpd_opt_len: total length of all options (5.8) in the packet
@@ -366,14 +368,20 @@ struct dccp_skb_cb {
 	} header;
 	__u8  dccpd_type:4;
 	__u8  dccpd_ccval:4;
+	__u8  dccpd_ecn:2;
 	__u8  dccpd_reset_code,
 	      dccpd_reset_data[3];
-	__u16 dccpd_opt_len;
+	__u16 dccpd_opt_len:10;
 	__u64 dccpd_seq;
 	__u64 dccpd_ack_seq;
 };
 
 #define DCCP_SKB_CB(__skb) ((struct dccp_skb_cb *)&((__skb)->cb[0]))
+
+static inline bool dccp_skb_is_ecn_ce(const struct sk_buff *skb)
+{
+	return (DCCP_SKB_CB(skb)->dccpd_ecn & INET_ECN_MASK) == INET_ECN_CE;
+}
 
 /* RFC 4340, sec. 7.7 */
 static inline int dccp_non_data_packet(const struct sk_buff *skb)

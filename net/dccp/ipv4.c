@@ -9,18 +9,14 @@
  *	as published by the Free Software Foundation; either version
  *	2 of the License, or (at your option) any later version.
  */
-
-#include <linux/dccp.h>
 #include <linux/icmp.h>
 #include <linux/slab.h>
 #include <linux/module.h>
-#include <linux/skbuff.h>
 #include <linux/random.h>
 
 #include <net/icmp.h>
 #include <net/inet_common.h>
 #include <net/inet_hashtables.h>
-#include <net/inet_sock.h>
 #include <net/protocol.h>
 #include <net/sock.h>
 #include <net/timewait_sock.h>
@@ -776,6 +772,8 @@ static int dccp_v4_rcv(struct sk_buff *skb)
 		goto discard_it;
 
 	iph = ip_hdr(skb);
+	DCCP_SKB_CB(skb)->dccpd_ecn = iph->tos & INET_ECN_MASK;
+
 	/* Step 1: If header checksum is incorrect, drop packet and return */
 	if (dccp_v4_csum_finish(skb, iph->saddr, iph->daddr)) {
 		DCCP_WARN("dropped packet with invalid checksum\n");

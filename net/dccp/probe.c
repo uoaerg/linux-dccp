@@ -36,7 +36,6 @@
 
 #include "dccp.h"
 #include "ccid.h"
-#include "ccids/ccid3.h"
 
 static int port;
 
@@ -54,28 +53,26 @@ static struct {
 static void jdccp_write_xmit(struct sock *sk)
 {
 	const struct inet_sock *inet = inet_sk(sk);
-	struct ccid3_hc_tx_sock *hc = NULL;
-	struct timespec64 tv;
-	char buf[256];
-	int len, ccid = ccid_get_current_tx_ccid(dccp_sk(sk));
-
-	if (ccid == DCCPC_CCID3)
-		hc = ccid3_hc_tx_sk(sk);
 
 	if (port == 0 || ntohs(inet->inet_dport) == port ||
 	    ntohs(inet->inet_sport) == port) {
-		tv  = ktime_to_timespec64(ktime_sub(ktime_get(), dccpw.start));
-		len = sprintf(buf, "%lu.%09lu %pI4:%u %pI4:%u %u",
+		char buf[256];
+		struct timespec64 tv;
+		int len, ccid;
+
+		tv   = ktime_to_timespec64(ktime_sub(ktime_get(), dccpw.start));
+		ccid = ccid_get_current_tx_ccid(dccp_sk(sk));
+		/* Basic field numbering (remainder is CCID-dependent):
+				     1         2       3       4
+				     sec.usec  source  dest    ccid */
+		len  = sprintf(buf, "%lu.%09lu %pI4:%u %pI4:%u %u",
 			       (unsigned long)tv.tv_sec,
 			       (unsigned long)tv.tv_nsec,
 			       &inet->inet_saddr, ntohs(inet->inet_sport),
 			       &inet->inet_daddr, ntohs(inet->inet_dport), ccid);
-		if (hc)
-			len += sprintf(buf + len, " %d %d %d %u %u %u %d",
-			       hc->tx_s, hc->tx_rtt, hc->tx_p, hc->tx_x_calc,
-			       (unsigned int)(hc->tx_x_recv >> 6),
-			       (unsigned int)(hc->tx_x >> 6), hc->tx_t_ipi);
+		len += dccp_xmit_probe(sk, buf + len, sizeof(buf) - len - 1);
 		len += sprintf(buf + len, "\n");
+
 		kfifo_in_locked(&dccpw.fifo, buf, len, &dccpw.lock);
 		wake_up(&dccpw.wait);
 	}

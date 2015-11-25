@@ -249,6 +249,7 @@ bool dccp_qpolicy_param_ok(struct sock *sk, __be32 param);
  * TX Packet Output and TX Timers
  */
 void dccp_write_xmit(struct sock *sk);
+size_t dccp_xmit_probe(struct sock *sk, char *buf, const size_t maxlen);
 void dccp_write_space(struct sock *sk);
 void dccp_flush_write_queue(struct sock *sk, long *time_budget);
 

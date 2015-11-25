@@ -364,6 +364,19 @@ static void ccid3_hc_tx_packet_sent(struct sock *sk, unsigned int len)
 		DCCP_CRIT("packet history - out of memory!");
 }
 
+static size_t ccid3_hc_tx_probe(struct sock *sk, char *buf, const size_t maxlen)
+{
+	struct ccid3_hc_tx_sock *hc = ccid3_hc_tx_sk(sk);
+
+	/* Specific field numbering:
+			5   6     7   8        9        10   11
+			s   rtt   p   X_calc   X_recv   X    t_ipi  */
+	return snprintf(buf, maxlen, " %d %d %d %u %u %u %d",
+			hc->tx_s, hc->tx_rtt, hc->tx_p, hc->tx_x_calc,
+			(unsigned int)(hc->tx_x_recv >> 6),
+			(unsigned int)(hc->tx_x >> 6), hc->tx_t_ipi);
+}
+
 static void ccid3_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
 {
 	struct ccid3_hc_tx_sock *hc = ccid3_hc_tx_sk(sk);
@@ -851,6 +864,7 @@ struct ccid_operations ccid3_ops = {
 	.ccid_hc_tx_exit	   = ccid3_hc_tx_exit,
 	.ccid_hc_tx_send_packet	   = ccid3_hc_tx_send_packet,
 	.ccid_hc_tx_packet_sent	   = ccid3_hc_tx_packet_sent,
+	.ccid_hc_tx_probe	   = ccid3_hc_tx_probe,
 	.ccid_hc_tx_packet_recv	   = ccid3_hc_tx_packet_recv,
 	.ccid_hc_tx_parse_options  = ccid3_hc_tx_parse_options,
 	.ccid_hc_rx_obj_size	   = sizeof(struct ccid3_hc_rx_sock),

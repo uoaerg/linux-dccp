@@ -369,6 +369,14 @@ void dccp_write_xmit(struct sock *sk)
 	}
 }
 
+size_t dccp_xmit_probe(struct sock *sk, char *buf, const size_t maxlen)
+{
+	struct ccid *tx_ccid = dccp_sk(sk)->dccps_hc_tx_ccid;
+
+	return tx_ccid == NULL ? 0 : ccid_hc_tx_probe(tx_ccid, sk, buf, maxlen);
+}
+EXPORT_SYMBOL_GPL(dccp_xmit_probe);
+
 /**
  * dccp_retransmit_skb  -  Retransmit Request, Close, or CloseReq packets
  * There are only four retransmittable packet types in DCCP:

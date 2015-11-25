@@ -42,6 +42,7 @@ struct tcp_info;
  *  @ccid_hc_tx_packet_recv: implements feedback processing for the HC-sender
  *  @ccid_hc_tx_send_packet: implements the sending part of the HC-sender
  *  @ccid_hc_tx_packet_sent: does accounting for packets in flight by HC-sender
+ *  @ccid_hc_tx_probe: CCID-dependent hook for dccp_probe
  *  @ccid_hc_{r,t}x_get_info: INET_DIAG information for HC-receiver/sender
  *  @ccid_hc_{r,t}x_getsockopt: socket options specific to HC-receiver/sender
  */
@@ -74,6 +75,8 @@ struct ccid_operations {
 						  struct sk_buff *skb);
 	void		(*ccid_hc_tx_packet_sent)(struct sock *sk,
 						  unsigned int len);
+	size_t		(*ccid_hc_tx_probe)(struct sock *sk,
+					    char *buf, const size_t maxlen);
 	void		(*ccid_hc_rx_get_info)(struct sock *sk,
 					       struct tcp_info *info);
 	void		(*ccid_hc_tx_get_info)(struct sock *sk,
@@ -176,6 +179,14 @@ static inline void ccid_hc_tx_packet_sent(struct ccid *ccid, struct sock *sk,
 {
 	if (ccid->ccid_ops->ccid_hc_tx_packet_sent != NULL)
 		ccid->ccid_ops->ccid_hc_tx_packet_sent(sk, len);
+}
+
+static inline size_t ccid_hc_tx_probe(struct ccid *ccid, struct sock *sk,
+				      char *buf, const size_t maxlen)
+{
+	if (ccid->ccid_ops->ccid_hc_tx_probe != NULL)
+		return ccid->ccid_ops->ccid_hc_tx_probe(sk, buf, maxlen);
+	return 0;
 }
 
 static inline void ccid_hc_rx_packet_recv(struct ccid *ccid, struct sock *sk,

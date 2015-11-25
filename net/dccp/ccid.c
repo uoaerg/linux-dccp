@@ -193,8 +193,20 @@ void ccid_hc_tx_delete(struct ccid *ccid, struct sock *sk)
 
 int __init ccid_initialize_builtins(void)
 {
-	int i, err = tfrc_lib_init();
-
+	int i, err;
+#ifdef CONFIG_IP_DCCP_CCID3
+	/*
+	 * Without a fine-grained clock resolution, RTTs/X_recv are not sampled
+	 * correctly in CCID-3 and feedback is sent either too early or too late.
+	 */
+	if (hrtimer_resolution > DCCP_TIME_RESOLUTION * NSEC_PER_USEC) {
+		printk(KERN_ERR "DCCP: clocksource too coarse (%ld usec), "
+				"need %u-usec resolution\n",
+			hrtimer_resolution/NSEC_PER_USEC, DCCP_TIME_RESOLUTION);
+		return -ESOCKTNOSUPPORT;
+	}
+#endif
+	err = tfrc_lib_init();
 	if (err)
 		return err;
 

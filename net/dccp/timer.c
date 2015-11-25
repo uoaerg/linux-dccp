@@ -260,8 +260,7 @@ u32 dccp_timestamp(void)
 {
 	u64 delta = (u64)ktime_us_delta(ktime_get_real(), dccp_timestamp_seed);
 
-	do_div(delta, 10);
-	return delta;
+	return div_u64(delta, DCCP_TIME_RESOLUTION);
 }
 EXPORT_SYMBOL_GPL(dccp_timestamp);
 

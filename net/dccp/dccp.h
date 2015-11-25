@@ -89,7 +89,7 @@ void dccp_time_wait(struct sock *sk, int state, int timeo);
 /*
  * RTT sampling: sanity bounds and fallback RTT value from RFC 4340, section 3.4
  */
-#define DCCP_SANE_RTT_MIN	100
+#define DCCP_SANE_RTT_MIN	(10 * DCCP_TIME_RESOLUTION)
 #define DCCP_FALLBACK_RTT	(USEC_PER_SEC / 5)
 #define DCCP_SANE_RTT_MAX	(3 * USEC_PER_SEC)
 

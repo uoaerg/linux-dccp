@@ -13,6 +13,11 @@ dccp-$(CONFIG_IP_DCCP_TFRC_LIB) += ccids/lib/tfrc.o		\
 				   ccids/lib/tfrc_equation.o	\
 				   ccids/lib/packet_history.o	\
 				   ccids/lib/loss_interval.o
+dccp-$(CONFIG_IP_DCCP_TFRC_SP_LIB) +=	ccids/lib/tfrc_sp.o		\
+					ccids/lib/tfrc_equation_sp.o	\
+					ccids/lib/packet_history_sp.o	\
+					ccids/lib/loss_interval_sp.o	\
+					ccids/lib/tfrc_ccids_sp.o
 
 dccp_ipv4-y := ipv4.o
 

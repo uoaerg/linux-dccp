@@ -177,6 +177,7 @@ enum {
 enum {
 	DCCPC_CCID2 = 2,
 	DCCPC_CCID3 = 3,
+	DCCPC_CCID4 = 4,
 	/*
 	 * CCIDs 248-255 below are permanently reserved for
 	 * experimental and testing use (RFC 4340, 19.5).

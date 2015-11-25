@@ -9,10 +9,12 @@ dccp-y := ccid.o feat.o input.o minisocks.o options.o output.o proto.o timer.o \
 dccp-y += ccids/ccid2.o ackvec.o
 dccp-$(CONFIG_IP_DCCP_CCID0)	+= ccids/ccid0.o
 dccp-$(CONFIG_IP_DCCP_CCID3)	+= ccids/ccid3.o
+dccp-$(CONFIG_IP_DCCP_CCID4)	+= ccids/ccid4.o
 dccp-$(CONFIG_IP_DCCP_TFRC_LIB) += ccids/lib/tfrc.o		\
 				   ccids/lib/tfrc_equation.o	\
 				   ccids/lib/packet_history.o	\
-				   ccids/lib/loss_interval.o
+				   ccids/lib/loss_interval.o	\
+				   ccids/lib/tfrc_ccids.o
 dccp-$(CONFIG_IP_DCCP_TFRC_SP_LIB) +=	ccids/lib/tfrc_sp.o		\
 					ccids/lib/tfrc_equation_sp.o	\
 					ccids/lib/packet_history_sp.o	\

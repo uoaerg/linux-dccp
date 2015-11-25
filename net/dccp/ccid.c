@@ -22,6 +22,9 @@ static struct ccid_operations *ccids[] = {
 #ifdef CONFIG_IP_DCCP_CCID3
 	&ccid3_ops,
 #endif
+#ifdef CONFIG_IP_DCCP_CCID4
+	&ccid4_ops,
+#endif
 #ifdef CONFIG_IP_DCCP_CCID0
 	&ccid0_ops,
 #endif
@@ -198,10 +201,10 @@ void ccid_hc_tx_delete(struct ccid *ccid, struct sock *sk)
 int __init ccid_initialize_builtins(void)
 {
 	int i, err;
-#ifdef CONFIG_IP_DCCP_CCID3
+#if defined(CONFIG_IP_DCCP_CCID3) || defined(CONFIG_IP_DCCP_CCID4)
 	/*
 	 * Without a fine-grained clock resolution, RTTs/X_recv are not sampled
-	 * correctly in CCID-3 and feedback is sent either too early or too late.
+	 * correctly in CCID-3/4 and feedback is sent too early or too late.
 	 */
 	if (hrtimer_resolution > DCCP_TIME_RESOLUTION * NSEC_PER_USEC) {
 		printk(KERN_ERR "DCCP: clocksource too coarse (%ld usec), "

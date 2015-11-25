@@ -98,6 +98,9 @@ extern struct ccid_operations ccid2_ops;
 #ifdef CONFIG_IP_DCCP_CCID3
 extern struct ccid_operations ccid3_ops;
 #endif
+#ifdef CONFIG_IP_DCCP_CCID4
+extern struct ccid_operations ccid4_ops;
+#endif
 
 int ccid_initialize_builtins(void);
 void ccid_cleanup_builtins(void);

@@ -1,18 +1,30 @@
 /*
+ *  Copyright (c) 2007   Federal University of Campina Grande, Paraiba, BR.
+ *  Copyright (c) 2007   University of Helsinki, Finland.
  *  Copyright (c) 2007   The University of Aberdeen, Scotland, UK
  *  Copyright (c) 2005-7 The University of Waikato, Hamilton, New Zealand.
- *  Copyright (c) 2005-7 Ian McDonald <ian.mcdonald@jandi.co.nz>
  *
  *  An implementation of the DCCP protocol
  *
- *  This code has been developed by the University of Waikato WAND
+ *  Copyright (c) 2007 Leandro Sales, Tommi Saviranta
+ *
+ *  This code has been developed by the Federal University of Campina Grande
+ *  Embedded Systems and Pervasive Computing Lab and the Department of Computer
+ *  Science at the University of Helsinki. For further information please see
+ *  http://embedded.ufcg.edu.br/ <leandroal@gmail.com>
+ *  http://www.iki.fi/ <wnd@iki.fi>
+ *
+ *  Copyright (c) 2005-7 Ian McDonald
+ *
+ *  This code is based on code developed by the University of Waikato WAND
  *  research group. For further information please see http://www.wand.net.nz/
+ *  or e-mail Ian McDonald - ian.mcdonald@jandi.co.nz
  *
  *  This code also uses code from Lulea University, rereleased as GPL by its
  *  authors:
  *  Copyright (c) 2003 Nils-Erik Mattsson, Joacim Haggmark, Magnus Erixzon
  *
- *  Changes to meet Linux coding standards, to make it meet latest ccid3 draft
+ *  Changes to meet Linux coding standards, to make it meet latest ccid4 draft
  *  and to make it work as a loadable module in the DCCP stack written by
  *  Arnaldo Carvalho de Melo <acme@conectiva.com.br>.
  *
@@ -33,38 +45,42 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include "../dccp.h"
-#include "ccid3.h"
+#include "ccid4.h"
 
 #include <asm/unaligned.h>
 
-#ifdef CONFIG_IP_DCCP_CCID3_DEBUG
-static bool ccid3_debug;
-#define ccid3_pr_debug(format, a...)	DCCP_PR_DEBUG(ccid3_debug, format, ##a)
+#ifdef CONFIG_IP_DCCP_CCID4_DEBUG
+static bool ccid4_debug;
+#define ccid4_pr_debug(format, a...)	DCCP_PR_DEBUG(ccid4_debug, format, ##a)
 #else
-#define ccid3_pr_debug(format, a...)
+#define ccid4_pr_debug(format, a...)
 #endif
 
 /*
  *	Transmitter Half-Connection Routines
  */
 /* Oscillation Prevention/Reduction: recommended by rfc3448bis, on by default */
-static bool ccid3_osc_prev = true;
+static bool ccid4_osc_prev = true;
 
 /**
- * ccid3_update_send_interval  -  Calculate new t_ipi = s / X
+ * ccid4_update_send_interval  -  Calculate new t_ipi = s / X
  * This respects the granularity of X (64 * bytes/second) and enforces the
  * scaled minimum of s * 64 / t_mbi = `s' bytes/second as per RFC 3448/4342.
  */
-static void ccid3_update_send_interval(struct tfrc_hc_tx_sock *hc)
+static void ccid4_update_send_interval(struct tfrc_hc_tx_sock *hc)
 {
 	if (unlikely(hc->tx_x <= hc->tx_s))
 		hc->tx_x = hc->tx_s;
 	hc->tx_t_ipi = scaled_div32(((u64)hc->tx_s) << 6, hc->tx_x);
 	DCCP_BUG_ON(hc->tx_t_ipi == 0);
+
+	/* TFRC-SP enforces a minimum interval of 10 milliseconds.  */
+	if (hc->tx_t_ipi < MIN_SEND_RATE)
+		hc->tx_t_ipi = MIN_SEND_RATE;
 }
 
 /**
- * ccid3_hc_tx_update_x  -  Update allowed sending rate X
+ * ccid4_hc_tx_update_x  -  Update allowed sending rate X
  * @stamp: most recent time if available - can be left NULL.
  *
  * This function tracks draft rfc3448bis, check there for latest details.
@@ -74,7 +90,7 @@ static void ccid3_update_send_interval(struct tfrc_hc_tx_sock *hc)
  *       throughout the code. Only X_calc is unscaled (in bytes/second).
  *
  */
-static void ccid3_hc_tx_update_x(struct sock *sk, ktime_t *stamp)
+static void ccid4_hc_tx_update_x(struct sock *sk, ktime_t *stamp)
 {
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
 	__u64 min_rate = 2 * hc->tx_x_recv;
@@ -95,6 +111,11 @@ static void ccid3_hc_tx_update_x(struct sock *sk, ktime_t *stamp)
 	if (hc->tx_p > 0) {
 
 		hc->tx_x = min(((__u64)hc->tx_x_calc) << 6, min_rate);
+		/*
+		 * CCID-4 Header Penalty:
+		 * Adjust sending rate according to (TFRC-SP, Section 5)
+		 */
+		hc->tx_x = div_u64(hc->tx_x * hc->tx_s, hc->tx_s + CCID4HCTX_H);
 
 	} else if (ktime_us_delta(now, hc->tx_t_ld) - (s64)hc->tx_rtt >= 0) {
 
@@ -105,33 +126,33 @@ static void ccid3_hc_tx_update_x(struct sock *sk, ktime_t *stamp)
 	}
 
 	if (hc->tx_x != old_x) {
-		ccid3_pr_debug("X_prev=%u, X_now=%u, X_calc=%u, "
+		ccid4_pr_debug("X_prev=%u, X_now=%u, X_calc=%u, "
 			       "X_recv=%u\n", (unsigned int)(old_x >> 6),
 			       (unsigned int)(hc->tx_x >> 6), hc->tx_x_calc,
 			       (unsigned int)(hc->tx_x_recv >> 6));
 
-		ccid3_update_send_interval(hc);
+		ccid4_update_send_interval(hc);
 	}
 }
 
 /**
- *	ccid3_hc_tx_measure_packet_size  -  Measuring the packet size `s'
+ *	ccid4_hc_tx_measure_packet_size  -  Measuring the packet size `s'
  *	@new_len: DCCP payload size in bytes (not used by all methods)
  *
- *	cf. RFC 4342, 5.3 and RFC 5348, 4.1
+ *	See ccid3.c for details.
  */
-static u32 ccid3_hc_tx_measure_packet_size(struct sock *sk, const u16 new_len)
+static u32 ccid4_hc_tx_measure_packet_size(struct sock *sk, const u16 new_len)
 {
-#if   defined(CONFIG_IP_DCCP_CCID3_MEASURE_S_AS_AVG)
+#if   defined(CONFIG_IP_DCCP_CCID4_MEASURE_S_AS_AVG)
 	return tfrc_ewma(tfrc_hc_tx_sk(sk)->tx_s, new_len, 9);
-#elif defined(CONFIG_IP_DCCP_CCID3_MEASURE_S_AS_MAX)
+#elif defined(CONFIG_IP_DCCP_CCID4_MEASURE_S_AS_MAX)
 	return max(tfrc_hc_tx_sk(sk)->tx_s, new_len);
-#else /* CONFIG_IP_DCCP_CCID3_MEASURE_S_AS_MPS	*/
+#else /* CONFIG_IP_DCCP_CCID4_MEASURE_S_AS_MPS	*/
 	return dccp_sk(sk)->dccps_mss_cache;
 #endif
 }
 
-static void ccid3_hc_tx_no_feedback_timer(unsigned long data)
+static void ccid4_hc_tx_no_feedback_timer(unsigned long data)
 {
 	struct sock *sk = (struct sock *)data;
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
@@ -144,7 +165,7 @@ static void ccid3_hc_tx_no_feedback_timer(unsigned long data)
 		goto restart_timer;
 	}
 
-	ccid3_pr_debug("%s(%p) entry with%s feedback\n", dccp_role(sk), sk,
+	ccid4_pr_debug("%s(%p) entry with%s feedback\n", dccp_role(sk), sk,
 		       hc->tx_feedback ? "" : "out");
 
 	/* Ignore and do not restart after leaving the established state */
@@ -162,7 +183,7 @@ static void ccid3_hc_tx_no_feedback_timer(unsigned long data)
 
 		/* halve send rate directly */
 		hc->tx_x /= 2;
-		ccid3_update_send_interval(hc);
+		ccid4_update_send_interval(hc);
 
 	} else {
 		/*
@@ -181,9 +202,9 @@ static void ccid3_hc_tx_no_feedback_timer(unsigned long data)
 			hc->tx_x_recv = hc->tx_x_calc;
 			hc->tx_x_recv <<= 4;
 		}
-		ccid3_hc_tx_update_x(sk, NULL);
+		ccid4_hc_tx_update_x(sk, NULL);
 	}
-	ccid3_pr_debug("Reduced X to %llu/64 bytes/sec\n",
+	ccid4_pr_debug("Reduced X to %llu/64 bytes/sec\n",
 			(unsigned long long)hc->tx_x);
 
 	/*
@@ -204,13 +225,13 @@ out:
 }
 
 /**
- * ccid3_hc_tx_send_packet  -  Delay-based dequeueing of TX packets
+ * ccid4_hc_tx_send_packet  -  Delay-based dequeueing of TX packets
  * @skb: next packet candidate to send on @sk
  *
  * This function uses the convention of ccid_packet_dequeue_eval() and
  * returns a millisecond-delay value between 0 and t_mbi = 64000 msec.
  */
-static int ccid3_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
+static int ccid4_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
 {
 	struct dccp_sock *dp = dccp_sk(sk);
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
@@ -240,7 +261,7 @@ static int ccid3_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
 		 * draft rfc3448bis, section 4.2. Remember, X is scaled by 2^6.
 		 */
 		if (dp->dccps_syn_rtt) {
-			ccid3_pr_debug("SYN RTT = %uus\n", dp->dccps_syn_rtt);
+			ccid4_pr_debug("SYN RTT = %uus\n", dp->dccps_syn_rtt);
 			hc->tx_rtt  = dp->dccps_syn_rtt;
 			hc->tx_x    = rfc3390_initial_rate(sk);
 			hc->tx_t_ld = now;
@@ -257,15 +278,15 @@ static int ccid3_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
 		}
 
 		/* Compute t_ipi = s / X */
-		hc->tx_s = ccid3_hc_tx_measure_packet_size(sk, skb->len);
-		ccid3_update_send_interval(hc);
+		hc->tx_s = ccid4_hc_tx_measure_packet_size(sk, skb->len);
+		ccid4_update_send_interval(hc);
 
 		/* Seed value for Oscillation Prevention (sec. 4.5) */
 		hc->tx_r_sqmean = tfrc_scaled_sqrt(hc->tx_rtt);
 
 	} else {
 		delay = ktime_us_delta(hc->tx_t_nom, now);
-		ccid3_pr_debug("delay=%ld\n", (long)delay);
+		ccid4_pr_debug("delay=%ld\n", (long)delay);
 		/*
 		 *	Scheduling of packet transmissions (RFC 5348, 8.3)
 		 *
@@ -289,18 +310,18 @@ static int ccid3_hc_tx_send_packet(struct sock *sk, struct sk_buff *skb)
 	return CCID_PACKET_SEND_AT_ONCE;
 }
 
-static void ccid3_hc_tx_packet_sent(struct sock *sk, unsigned int len)
+static void ccid4_hc_tx_packet_sent(struct sock *sk, unsigned int len)
 {
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
 
 	/* Changes to s will become effective the next time X is computed */
-	hc->tx_s = ccid3_hc_tx_measure_packet_size(sk, len);
+	hc->tx_s = ccid4_hc_tx_measure_packet_size(sk, len);
 
 	if (tfrc_tx_hist_add(&hc->tx_hist, dccp_sk(sk)->dccps_gss))
 		DCCP_CRIT("packet history - out of memory!");
 }
 
-static void ccid3_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
+static void ccid4_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
 {
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
 	struct tfrc_tx_hist_entry *acked;
@@ -344,7 +365,7 @@ static void ccid3_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
 			hc->tx_x    = rfc3390_initial_rate(sk);
 			hc->tx_t_ld = now;
 
-			ccid3_update_send_interval(hc);
+			ccid4_update_send_interval(hc);
 
 			goto done_computing_x;
 		} else if (hc->tx_p == 0) {
@@ -357,11 +378,11 @@ static void ccid3_hc_tx_packet_recv(struct sock *sk, struct sk_buff *skb)
 
 	/* Update sending rate (step 4 of [RFC 3448, 4.3]) */
 	if (hc->tx_p > 0)
-		hc->tx_x_calc = tfrc_calc_x(hc->tx_s, hc->tx_rtt, hc->tx_p);
-	ccid3_hc_tx_update_x(sk, &now);
+		hc->tx_x_calc = tfrc_calc_x(NOM_PACKET_SIZE, hc->tx_rtt, hc->tx_p);
+	ccid4_hc_tx_update_x(sk, &now);
 
 done_computing_x:
-	ccid3_pr_debug("%s(%p), RTT=%uus (sample=%uus), s=%u, "
+	ccid4_pr_debug("%s(%p), RTT=%uus (sample=%uus), s=%u, "
 			       "p=%u, X_calc=%u, X_recv=%u, X=%u\n",
 			       dccp_role(sk), sk, hc->tx_rtt, r_sample,
 			       hc->tx_s, hc->tx_p, hc->tx_x_calc,
@@ -377,7 +398,7 @@ done_computing_x:
 	 *    MSc Thesis, University of Mannheim, Germany, 2000
 	 * (sec. 3.6.4), who calls this ISM ("Inter-packet Space Modulation").
 	 */
-	if (ccid3_osc_prev) {
+	if (ccid4_osc_prev) {
 		r_sample = tfrc_scaled_sqrt(r_sample);
 		/*
 		 * The modulation can work in both ways: increase/decrease t_ipi
@@ -422,7 +443,7 @@ done_computing_x:
 	 */
 	t_nfb = max(hc->tx_t_rto, 2 * hc->tx_t_ipi);
 
-	ccid3_pr_debug("%s(%p), Scheduled no feedback timer to "
+	ccid4_pr_debug("%s(%p), Scheduled no feedback timer to "
 		       "expire in %lu jiffies (%luus)\n",
 		       dccp_role(sk), sk, usecs_to_jiffies(t_nfb), t_nfb);
 
@@ -430,7 +451,7 @@ done_computing_x:
 			   jiffies + usecs_to_jiffies(t_nfb));
 }
 
-static int ccid3_hc_tx_parse_options(struct sock *sk, u8 packet_type,
+static int ccid4_hc_tx_parse_options(struct sock *sk, u8 packet_type,
 				     u8 option, u8 *optval, u8 optlen)
 {
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
@@ -454,30 +475,34 @@ static int ccid3_hc_tx_parse_options(struct sock *sk, u8 packet_type,
 			hc->tx_x_recv = opt_val;
 			hc->tx_x_recv <<= 6;
 
-			ccid3_pr_debug("%s(%p), RECEIVE_RATE=%u\n",
+			ccid4_pr_debug("%s(%p), RECEIVE_RATE=%u\n",
 				       dccp_role(sk), sk, opt_val);
 		} else {
 			/* Update the fixpoint Loss Event Rate fraction */
 			hc->tx_p = tfrc_invert_loss_event_rate(opt_val);
 
-			ccid3_pr_debug("%s(%p), LOSS_EVENT_RATE=%u\n",
+			ccid4_pr_debug("%s(%p), LOSS_EVENT_RATE=%u\n",
 				       dccp_role(sk), sk, opt_val);
 		}
+		break;
+	case TFRC_OPT_DROPPED_PACKETS:
+		/* FIXME: Implement this sock option according to ccid-4 draft */
+		break;
 	}
 	return 0;
 }
 
-static int ccid3_hc_tx_init(struct ccid *ccid, struct sock *sk)
+static int ccid4_hc_tx_init(struct ccid *ccid, struct sock *sk)
 {
 	struct tfrc_hc_tx_sock *hc = ccid_priv(ccid);
 
 	hc->tx_hist  = NULL;
 	setup_timer(&hc->tx_no_feedback_timer,
-			ccid3_hc_tx_no_feedback_timer, (unsigned long)sk);
+			ccid4_hc_tx_no_feedback_timer, (unsigned long)sk);
 	return 0;
 }
 
-static void ccid3_hc_tx_exit(struct sock *sk)
+static void ccid4_hc_tx_exit(struct sock *sk)
 {
 	struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
 
@@ -485,13 +510,13 @@ static void ccid3_hc_tx_exit(struct sock *sk)
 	tfrc_tx_hist_purge(&hc->tx_hist);
 }
 
-static void ccid3_hc_tx_get_info(struct sock *sk, struct tcp_info *info)
+static void ccid4_hc_tx_get_info(struct sock *sk, struct tcp_info *info)
 {
 	info->tcpi_rto = tfrc_hc_tx_sk(sk)->tx_t_rto;
 	info->tcpi_rtt = tfrc_hc_tx_sk(sk)->tx_rtt;
 }
 
-static int ccid3_hc_tx_getsockopt(struct sock *sk, const int optname, int len,
+static int ccid4_hc_tx_getsockopt(struct sock *sk, const int optname, int len,
 				  u32 __user *optval, int __user *optlen)
 {
 	const struct tfrc_hc_tx_sock *hc = tfrc_hc_tx_sk(sk);
@@ -502,7 +527,6 @@ static int ccid3_hc_tx_getsockopt(struct sock *sk, const int optname, int len,
 	case DCCP_SOCKOPT_CCID_TX_INFO:
 		if (len < sizeof(tfrc))
 			return -EINVAL;
-		memset(&tfrc, 0, sizeof(tfrc));
 		tfrc.tfrctx_x	   = hc->tx_x;
 		tfrc.tfrctx_x_recv = hc->tx_x_recv;
 		tfrc.tfrctx_x_calc = hc->tx_x_calc;
@@ -526,7 +550,7 @@ static int ccid3_hc_tx_getsockopt(struct sock *sk, const int optname, int len,
 /*
  *	Receiver Half-Connection Routines
  */
-static void ccid3_hc_rx_send_feedback(struct sock *sk,
+static void ccid4_hc_rx_send_feedback(struct sock *sk,
 				      const struct sk_buff *skb,
 				      enum tfrc_fback_type fbtype)
 {
@@ -578,7 +602,7 @@ static void ccid3_hc_rx_send_feedback(struct sock *sk,
 		return;
 	}
 
-	ccid3_pr_debug("X_recv=%u, 1/p=%u\n", hc->rx_x_recv, hc->rx_pinv);
+	ccid4_pr_debug("X_recv=%u, 1/p=%u\n", hc->rx_x_recv, hc->rx_pinv);
 
 	dccp_sk(sk)->dccps_hc_rx_insert_options = 1;
 	dccp_send_ack(sk);
@@ -589,7 +613,7 @@ prepare_for_next_time:
 	hc->rx_feedback	    = fbtype;
 }
 
-static int ccid3_hc_rx_insert_options(struct sock *sk, struct sk_buff *skb)
+static int ccid4_hc_rx_insert_options(struct sock *sk, struct sk_buff *skb)
 {
 	const struct tfrc_hc_rx_sock *hc = tfrc_hc_rx_sk(sk);
 	__be32 x_recv, pinv;
@@ -613,7 +637,7 @@ static int ccid3_hc_rx_insert_options(struct sock *sk, struct sk_buff *skb)
 }
 
 /**
- * ccid3_first_li  -  Implements [RFC 5348, 6.3.1]
+ * ccid4_first_li  -  Implements [RFC 5348, 6.3.1]
  *
  * Determine the length of the first loss interval via inverse lookup.
  * Assume that X_recv can be computed by the throughput equation
@@ -622,11 +646,10 @@ static int ccid3_hc_rx_insert_options(struct sock *sk, struct sk_buff *skb)
  *		 R * fval
  * Find some p such that f(p) = fval; return 1/p (scaled).
  */
-static u32 ccid3_first_li(struct sock *sk)
+static u32 ccid4_first_li(struct sock *sk)
 {
 	struct tfrc_hc_rx_sock *hc = tfrc_hc_rx_sk(sk);
-	u32 s = tfrc_rx_hist_packet_size(&hc->rx_hist),
-	    rtt = tfrc_rx_hist_rtt(&hc->rx_hist), x_recv, p;
+	u32 rtt = tfrc_rx_hist_rtt(&hc->rx_hist), x_recv, p;
 	u64 fval;
 
 	/*
@@ -641,10 +664,10 @@ static u32 ccid3_first_li(struct sock *sk)
 	if (x_recv == 0)
 		goto failed;
 
-	fval = scaled_div32(scaled_div(s, rtt), x_recv);
+	fval = scaled_div32(scaled_div(NOM_PACKET_SIZE, rtt), x_recv);
 	p = tfrc_calc_x_reverse_lookup(fval);
 
-	ccid3_pr_debug("%s(%p), receive rate=%u bytes/s, implied "
+	ccid4_pr_debug("%s(%p), receive rate=%u bytes/s, implied "
 		       "loss rate=%u\n", dccp_role(sk), sk, x_recv, p);
 
 	if (p > 0)
@@ -653,7 +676,7 @@ failed:
 	return UINT_MAX;
 }
 
-static void ccid3_hc_rx_packet_recv(struct sock *sk, struct sk_buff *skb)
+static void ccid4_hc_rx_packet_recv(struct sock *sk, struct sk_buff *skb)
 {
 	struct tfrc_hc_rx_sock *hc = tfrc_hc_rx_sk(sk);
 	const u64 ndp = dccp_sk(sk)->dccps_options_received.dccpor_ndp;
@@ -663,22 +686,22 @@ static void ccid3_hc_rx_packet_recv(struct sock *sk, struct sk_buff *skb)
 	 * Perform loss detection and handle pending losses
 	 */
 	if (tfrc_rx_congestion_event(&hc->rx_hist, &hc->rx_li_hist,
-				     skb, ndp, ccid3_first_li, sk))
-		ccid3_hc_rx_send_feedback(sk, skb, TFRC_FBACK_PARAM_CHANGE);
+				     skb, ndp, ccid4_first_li, sk))
+		ccid4_hc_rx_send_feedback(sk, skb, TFRC_FBACK_PARAM_CHANGE);
 	/*
 	 * Feedback for first non-empty data packet (RFC 3448, 6.3)
 	 */
 	else if (unlikely(hc->rx_feedback == TFRC_FBACK_NONE && is_data_packet))
-		ccid3_hc_rx_send_feedback(sk, skb, TFRC_FBACK_INITIAL);
+		ccid4_hc_rx_send_feedback(sk, skb, TFRC_FBACK_INITIAL);
 	/*
 	 * Check if the periodic once-per-RTT feedback is due; RFC 4342, 10.3
 	 */
 	else if (!tfrc_rx_hist_loss_pending(&hc->rx_hist) && is_data_packet &&
 		 SUB16(dccp_hdr(skb)->dccph_ccval, hc->rx_last_counter) > 3)
-		ccid3_hc_rx_send_feedback(sk, skb, TFRC_FBACK_PERIODIC);
+		ccid4_hc_rx_send_feedback(sk, skb, TFRC_FBACK_PERIODIC);
 }
 
-static int ccid3_hc_rx_init(struct ccid *ccid, struct sock *sk)
+static int ccid4_hc_rx_init(struct ccid *ccid, struct sock *sk)
 {
 	struct tfrc_hc_rx_sock *hc = ccid_priv(ccid);
 
@@ -686,7 +709,7 @@ static int ccid3_hc_rx_init(struct ccid *ccid, struct sock *sk)
 	return tfrc_rx_hist_init(&hc->rx_hist, sk);
 }
 
-static void ccid3_hc_rx_exit(struct sock *sk)
+static void ccid4_hc_rx_exit(struct sock *sk)
 {
 	struct tfrc_hc_rx_sock *hc = tfrc_hc_rx_sk(sk);
 
@@ -694,13 +717,13 @@ static void ccid3_hc_rx_exit(struct sock *sk)
 	tfrc_lh_cleanup(&hc->rx_li_hist);
 }
 
-static void ccid3_hc_rx_get_info(struct sock *sk, struct tcp_info *info)
+static void ccid4_hc_rx_get_info(struct sock *sk, struct tcp_info *info)
 {
 	info->tcpi_options  |= TCPI_OPT_TIMESTAMPS;
 	info->tcpi_rcv_rtt  = tfrc_rx_hist_rtt(&tfrc_hc_rx_sk(sk)->rx_hist);
 }
 
-static int ccid3_hc_rx_getsockopt(struct sock *sk, const int optname, int len,
+static int ccid4_hc_rx_getsockopt(struct sock *sk, const int optname, int len,
 				  u32 __user *optval, int __user *optlen)
 {
 	const struct tfrc_hc_rx_sock *hc = tfrc_hc_rx_sk(sk);
@@ -727,32 +750,32 @@ static int ccid3_hc_rx_getsockopt(struct sock *sk, const int optname, int len,
 	return 0;
 }
 
-struct ccid_operations ccid3_ops = {
-	.ccid_id		   = DCCPC_CCID3,
-	.ccid_name		   = "TCP-Friendly Rate Control",
+struct ccid_operations ccid4_ops = {
+	.ccid_id		   = DCCPC_CCID4,
+	.ccid_name		   = "TCP-Friendly Rate Control (Small-Packet variant)",
 	.ccid_hc_tx_obj_size	   = sizeof(struct tfrc_hc_tx_sock),
-	.ccid_hc_tx_init	   = ccid3_hc_tx_init,
-	.ccid_hc_tx_exit	   = ccid3_hc_tx_exit,
-	.ccid_hc_tx_send_packet	   = ccid3_hc_tx_send_packet,
-	.ccid_hc_tx_packet_sent	   = ccid3_hc_tx_packet_sent,
+	.ccid_hc_tx_init	   = ccid4_hc_tx_init,
+	.ccid_hc_tx_exit	   = ccid4_hc_tx_exit,
+	.ccid_hc_tx_send_packet	   = ccid4_hc_tx_send_packet,
+	.ccid_hc_tx_packet_sent	   = ccid4_hc_tx_packet_sent,
 	.ccid_hc_tx_probe	   = tfrc_hc_tx_probe,
-	.ccid_hc_tx_packet_recv	   = ccid3_hc_tx_packet_recv,
-	.ccid_hc_tx_parse_options  = ccid3_hc_tx_parse_options,
+	.ccid_hc_tx_packet_recv	   = ccid4_hc_tx_packet_recv,
+	.ccid_hc_tx_parse_options  = ccid4_hc_tx_parse_options,
 	.ccid_hc_rx_obj_size	   = sizeof(struct tfrc_hc_rx_sock),
-	.ccid_hc_rx_init	   = ccid3_hc_rx_init,
-	.ccid_hc_rx_exit	   = ccid3_hc_rx_exit,
-	.ccid_hc_rx_insert_options = ccid3_hc_rx_insert_options,
-	.ccid_hc_rx_packet_recv	   = ccid3_hc_rx_packet_recv,
-	.ccid_hc_rx_get_info	   = ccid3_hc_rx_get_info,
-	.ccid_hc_tx_get_info	   = ccid3_hc_tx_get_info,
-	.ccid_hc_rx_getsockopt	   = ccid3_hc_rx_getsockopt,
-	.ccid_hc_tx_getsockopt	   = ccid3_hc_tx_getsockopt,
+	.ccid_hc_rx_init	   = ccid4_hc_rx_init,
+	.ccid_hc_rx_exit	   = ccid4_hc_rx_exit,
+	.ccid_hc_rx_insert_options = ccid4_hc_rx_insert_options,
+	.ccid_hc_rx_packet_recv	   = ccid4_hc_rx_packet_recv,
+	.ccid_hc_rx_get_info	   = ccid4_hc_rx_get_info,
+	.ccid_hc_tx_get_info	   = ccid4_hc_tx_get_info,
+	.ccid_hc_rx_getsockopt	   = ccid4_hc_rx_getsockopt,
+	.ccid_hc_tx_getsockopt	   = ccid4_hc_tx_getsockopt,
 };
 
-module_param(ccid3_osc_prev, bool, 0644);
-MODULE_PARM_DESC(ccid3_osc_prev, "Oscillation Prevention for CCID-3 (RFC 3448, 4.5)");
+module_param(ccid4_osc_prev, bool, 0644);
+MODULE_PARM_DESC(ccid4_osc_prev, "Oscillation Prevention for CCID-4 (RFC 3448, 4.5)");
 
-#ifdef CONFIG_IP_DCCP_CCID3_DEBUG
-module_param(ccid3_debug, bool, 0644);
-MODULE_PARM_DESC(ccid3_debug, "Enable CCID-3 debug messages");
+#ifdef CONFIG_IP_DCCP_CCID4_DEBUG
+module_param(ccid4_debug, bool, 0644);
+MODULE_PARM_DESC(ccid4_debug, "Enable CCID-4 debug messages");
 #endif

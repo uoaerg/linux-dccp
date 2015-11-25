@@ -612,7 +612,7 @@ static u8 dccp_feat_is_valid_sp_val(u8 feat_num, u8 val)
 {
 	switch (feat_num) {
 	case DCCPF_CCID:
-		return	val == DCCPC_CCID2 || val == DCCPC_CCID3 ||
+		return	(val >= DCCPC_CCID2 && val <= DCCPC_CCID4) ||
 			(val >= DCCPC_TESTING_MIN && val <= DCCPC_TESTING_MAX);
 	/* Type-check Boolean feature values: */
 	case DCCPF_SHORT_SEQNOS:
@@ -952,6 +952,7 @@ static const struct ccid_dependency *dccp_feat_ccid_deps(u8 ccid, bool is_local)
 	case DCCPC_CCID2:
 		return ccid2_dependencies[is_local];
 	case DCCPC_CCID3:
+	case DCCPC_CCID4: /* fall through (CCID-4 is a variation of CCID-3 */
 		return ccid3_dependencies[is_local];
 	default:
 		return NULL;

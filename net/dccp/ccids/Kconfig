@@ -47,7 +47,7 @@ config IP_DCCP_CCID3_DEBUG
 	  If in doubt, say N.
 
 choice
-	prompt "Select method for measuring the packet size s"
+	prompt "Select method for measuring the packet size s in CCID-3"
 	default IP_DCCP_CCID3_MEASURE_S_AS_MPS
 
 config IP_DCCP_CCID3_MEASURE_S_AS_MPS
@@ -65,13 +65,66 @@ config IP_DCCP_CCID3_MEASURE_S_AS_MAX
 	---help---
 	  An experimental method based on tracking the maximum packet size.
 endchoice
+endif	# IP_DCCP_CCID3
+
+config IP_DCCP_CCID4
+	bool "CCID-4 (TCP-Friendly, Small Packet Variant)"
+	def_bool y if (IP_DCCP = y || IP_DCCP = m)
+	select IP_DCCP_TFRC_LIB
+	---help---
+	  CCID-4 denotes Congestion Control Identifier 4, the Small-Packet
+	  variant of TCP-Friendly Rate Control (TFRC) for use with the Datagram
+	  Congestion Control Protocol (DCCP).  CCID 4 uses TFRC-SP (RFC 4828), a
+	  variant of TFRC designed for applications that send small packets. The
+	  goal for TFRC-SP is to achieve roughly the same bandwidth in bits per
+	  second (bps) as a TCP flow using packets of up to 1500 bytes but
+	  experiencing the same level of congestion.  CCID-4 is for experimental
+	  use, for senders that send small packets and would like a TCP-friendly
+	  sending rate, possibly with Explicit Congestion Notification (ECN),
+	  while minimizing abrupt rate changes.
+
+	  CCID-4 is specified in RFC 5622.
+
+	  If in doubt, say N.
+
+if IP_DCCP_CCID4
+config IP_DCCP_CCID4_DEBUG
+	bool "CCID-4 debugging messages"
+	---help---
+	  Enable CCID-4 specific debugging messages.
+
+	  The debugging output can additionally be toggled by setting the
+	  ccid4_debug parameter to 0 or 1.
+
+	  If in doubt, say N.
+
+# XXX Hack: this could be combined into a TFRC option. Left it for the moment
+choice
+	prompt "Select method for measuring the packet size s in CCID-4"
+	default IP_DCCP_CCID4_MEASURE_S_AS_MPS
+
+config IP_DCCP_CCID4_MEASURE_S_AS_MPS
+	bool "Always use MPS in place of s"
+	---help---
+	  This use is recommended as it is consistent with the initialisation
+	  of X and suggested when s varies (rfc3448bis, (1) in section 4.1).
+config IP_DCCP_CCID4_MEASURE_S_AS_AVG
+	bool "Use moving average"
+	---help---
+	  An alternative way of tracking s, also supported by rfc3448bis.
+	  This used to be the default for CCID-3 in previous kernels.
+config IP_DCCP_CCID4_MEASURE_S_AS_MAX
+	bool "Track the maximum payload length"
+	---help---
+	  An experimental method based on tracking the maximum packet size.
+endchoice
+endif	# IP_DCCP_CCID4
 
 config IP_DCCP_TFRC_LIB
-	def_bool y
+	def_bool y if (IP_DCCP_CCID3 || IP_DCCP_CCID4)
 
 config IP_DCCP_TFRC_DEBUG
-	def_bool y if IP_DCCP_CCID3_DEBUG
-endif
+	def_bool y if (IP_DCCP_CCID3_DEBUG || IP_DCCP_CCID4_DEBUG)
 
 config IP_DCCP_CCID0
 	bool "CCID-ZERO (UDP-like) sample kernel module"
